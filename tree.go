@@ -2,6 +2,7 @@ package treemux
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -393,4 +394,8 @@ func (n *node) dumpTree(prefix, nodeType string) string {
 		line += n.catchAllChild.dumpTree(prefix, "*")
 	}
 	return line
+}
+
+func unescape(path string) (string, error) {
+	return url.PathUnescape(path)
 }

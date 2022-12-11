@@ -1,3 +1,3 @@
-module github.com/dimfeld/httptreemux/v5
+module github.com/jxskiss/treemux
 
-go 1.9
+go 1.18
