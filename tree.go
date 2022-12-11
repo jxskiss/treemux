@@ -2,6 +2,7 @@ package treemux
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -14,8 +15,12 @@ type node struct {
 	staticIndices []byte
 	staticChild   []*node
 
-	// If none of the above match, check the wildcard children
+	// If static routes don't match, check the wildcard children.
 	wildcardChild *node
+
+	// If none of the above match, check regular expression routes.
+	regexChild []*node
+	regExpr    *regexp.Regexp
 
 	// If none of the above match, then we use the catch-all, if applicable.
 	catchAllChild *node
@@ -24,6 +29,7 @@ type node struct {
 
 	addSlash   bool
 	isCatchAll bool
+	isRegex    bool
 	// If true, the head handler was set implicitly, so let it also be set explicitly.
 	implicitHead bool
 	// If this node is the end of the URL, then call the handler, if applicable.
@@ -125,6 +131,19 @@ func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *nod
 		n.catchAllChild.leafWildcardNames = wildcards
 
 		return n.catchAllChild
+
+	} else if c == '~' && !inStaticToken {
+		thisToken = thisToken[1:]
+		for _, child := range n.regexChild {
+			if path[1:] == child.path {
+				return child
+			}
+		}
+		re := regexp.MustCompile(path[1:])
+		child := &node{path: path[1:], isRegex: true, regExpr: re}
+		n.regexChild = append(n.regexChild, child)
+		return child
+
 	} else if c == ':' && !inStaticToken {
 		// Token starts with a :
 		thisToken = thisToken[1:]
@@ -148,7 +167,7 @@ func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *nod
 
 		unescaped := false
 		if len(thisToken) >= 2 && !inStaticToken {
-			if thisToken[0] == '\\' && (thisToken[1] == '*' || thisToken[1] == ':' || thisToken[1] == '\\') {
+			if thisToken[0] == '\\' && (thisToken[1] == '*' || thisToken[1] == ':' || thisToken[1] == '~' || thisToken[1] == '\\') {
 				// The token starts with a character escaped by a backslash. Drop the backslash.
 				c = thisToken[1]
 				thisToken = thisToken[1:]
@@ -295,10 +314,18 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 				// Didn't actually find a handler here, so remember that we
 				// found a node but also see if we can fall through to the
 				// catchall.
-				found = wcNode
-				handler = wcHandler
-				params = wcParams
+				found, handler, params = wcNode, wcHandler, wcParams
 			}
+		}
+	}
+
+	var reNode *node
+	var reParams []string
+	if len(n.regexChild) > 0 {
+		// Test regex routes in their registering order.
+		reNode, handler, reParams = n.searchRegexChild(method, path)
+		if handler != nil {
+			return reNode, handler, reParams
 		}
 	}
 
@@ -309,7 +336,7 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 		handler = catchAllChild.leafHandler[method]
 		// Found a handler, or we found a catchall node without a handler.
 		// Either way, return it since there's nothing left to check after this.
-		if handler != nil || found == nil {
+		if handler != nil || (found == nil && reNode == nil) {
 			unescaped, err := unescape(path)
 			if err != nil {
 				unescaped = path
@@ -317,10 +344,36 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 
 			return catchAllChild, handler, []string{unescaped}
 		}
-
 	}
 
-	return found, handler, params
+	// In case we found a child node without corresponding method handler,
+	// return the child node, return it.
+	if found != nil {
+		return found, handler, params
+	}
+	return reNode, handler, reParams
+}
+
+func (n *node) searchRegexChild(method, path string) (found *node, handler HandlerFunc, params []string) {
+	for _, child := range n.regexChild {
+		re := child.regExpr
+		match := re.FindStringSubmatch(path)
+		if len(match) == 0 {
+			continue
+		}
+
+		handler = child.leafHandler[method]
+		if handler != nil {
+			params = match
+			return child, handler, params
+		}
+
+		// No handler is registered for this method, we return the
+		// regex node and params. In case no catchall handler matches,
+		// report 405 instead of 404.
+		return child, nil, params
+	}
+	return nil, nil, nil
 }
 
 func (n *node) dumpTree(prefix, nodeType string) string {
@@ -332,6 +385,9 @@ func (n *node) dumpTree(prefix, nodeType string) string {
 	}
 	if n.wildcardChild != nil {
 		line += n.wildcardChild.dumpTree(prefix, ":")
+	}
+	for _, child := range n.regexChild {
+		line += child.dumpTree(prefix, "~")
 	}
 	if n.catchAllChild != nil {
 		line += n.catchAllChild.dumpTree(prefix, "*")

@@ -2,6 +2,7 @@ package treemux
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 )
 
@@ -63,11 +64,24 @@ func testPath(t *testing.T, tree *node, path string, expectPath string, expected
 		t.Error("Node and subtree was\n" + n.dumpTree("", " "))
 	}
 
-	if expectedParams == nil {
-		if len(paramList) != 0 {
-			t.Errorf("Path %s expected no parameters, saw %v", path, paramList)
+	if n.isRegex {
+		paramMap := make(map[string]string)
+		for i, name := range n.regExpr.SubexpNames() {
+			if i > 0 && name != "" {
+				paramMap[name] = paramList[i]
+			}
+		}
+		if len(expectedParams) != len(paramMap) {
+			t.Errorf("Path %s expected no parameters, got %v", path, paramMap)
+		} else if len(expectedParams) > 0 && !reflect.DeepEqual(paramMap, expectedParams) {
+			t.Errorf("Regexp params not match, want %v, but got %v", expectedParams, paramMap)
 		}
 	} else {
+		if expectedParams == nil {
+			if len(paramList) != 0 {
+				t.Errorf("Path %s expected no parameters, saw %v", path, paramList)
+			}
+		}
 		if len(paramList) != len(n.leafWildcardNames) {
 			t.Errorf("Got %d params back but node specifies %d",
 				len(paramList), len(n.leafWildcardNames))
@@ -140,12 +154,28 @@ func TestTree(t *testing.T) {
 	addPath(t, tree, "/plaster")
 	addPath(t, tree, "/users/:pk/:related")
 	addPath(t, tree, "/users/:id/updatePassword")
+	addPath(t, tree, `/users/~^.+$`) // not matched by others go to this route
 	addPath(t, tree, "/:something/abc")
 	addPath(t, tree, "/:something/def")
 	addPath(t, tree, "/apples/ab:cde/:fg/*hi")
 	addPath(t, tree, "/apples/ab*cde/:fg/*hi")
 	addPath(t, tree, "/apples/ab\\*cde/:fg/*hi")
 	addPath(t, tree, "/apples/ab*dde")
+	addPath(t, tree, `/smith/~^.+$`)
+	addPath(t, tree, `/smith/abc/~^some-(?P<var1>\w+)-(?P<var2>\d+)-(.*)$`)
+	addPath(t, tree, `/smith/abc/~^some-.*second.*$`) // the previous one will be matched first
+	addPath(t, tree, "/images3/*path")
+	addPath(t, tree, `/images3/~^(?P<category>\w+)-(?P<name>.+)$`)
+
+	testPath(t, tree, "/smith/abc/some-holiday-202110-hawaii-beach", `/smith/abc/~^some-(?P<var1>\w+)-(?P<var2>\d+)-(.*)$`,
+		map[string]string{"var1": "holiday", "var2": "202110"})
+	testPath(t, tree, "/smith/abc/some-matchthesecondregex", `/smith/abc/~^some-.*second.*$`, nil)
+	testPath(t, tree, "/smith/abc/third-no-specific-match", `/smith/~^.+$`, nil)
+	testPath(t, tree, "/users/123/something/notmatch", `/users/~^.+$`, nil)
+	testPath(t, tree, "/images3/categorya-img1.jpg", `/images3/~^(?P<category>\w+)-(?P<name>.+)$`,
+		map[string]string{"category": "categorya", "name": "img1.jpg"})
+	testPath(t, tree, "/images3/nocategoryimg.jpg", "/images3/*path",
+		map[string]string{"path": "nocategoryimg.jpg"})
 
 	testPath(t, tree, "/users/abc/updatePassword", "/users/:id/updatePassword",
 		map[string]string{"id": "abc"})

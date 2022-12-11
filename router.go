@@ -53,8 +53,8 @@ type LookupResult struct {
 	// This will generally be `http.StatusNotFound` or `http.StatusMethodNotAllowed` for an
 	// error case. On a normal success, the statusCode will be `http.StatusOK`. A redirect code
 	// will also be used in the case
-	StatusCode  int
-	handler     HandlerFunc
+	StatusCode int
+	handler    HandlerFunc
 	// Params represents the key value pairs of the path parameters.
 	Params      map[string]string
 	leafHandler map[string]HandlerFunc // Only has a value when StatusCode is MethodNotAllowed.
@@ -193,16 +193,24 @@ func (t *TreeMux) lookup(w http.ResponseWriter, r *http.Request) (result LookupR
 
 	var paramMap map[string]string
 	if len(params) != 0 {
-		if len(params) != len(n.leafWildcardNames) {
-			// Need better behavior here. Should this be a panic?
-			panic(fmt.Sprintf("httptreemux parameter list length mismatch: %v, %v",
-				params, n.leafWildcardNames))
-		}
-
-		paramMap = make(map[string]string)
 		numParams := len(params)
-		for index := 0; index < numParams; index++ {
-			paramMap[n.leafWildcardNames[numParams-index-1]] = params[index]
+		paramMap = make(map[string]string, numParams)
+		if n.isRegex {
+			for i, name := range n.regExpr.SubexpNames() {
+				if i > 0 && name != "" {
+					paramMap[name] = params[i]
+				}
+			}
+		} else {
+			if numParams != len(n.leafWildcardNames) {
+				// Need better behavior here. Should this be a panic?
+				panic(fmt.Sprintf("httptreemux parameter list length mismatch: %v, %v",
+					params, n.leafWildcardNames))
+			}
+
+			for index := 0; index < numParams; index++ {
+				paramMap[n.leafWildcardNames[numParams-index-1]] = params[index]
+			}
 		}
 	}
 
