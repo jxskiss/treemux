@@ -7,24 +7,24 @@ import (
 	"strings"
 )
 
-type node struct {
+type node[T HandlerConstraint] struct {
 	path string
 
 	priority int
 
 	// The list of static children to check.
 	staticIndices []byte
-	staticChild   []*node
+	staticChild   []*node[T]
 
 	// If static routes don't match, check the wildcard children.
-	wildcardChild *node
+	wildcardChild *node[T]
 
 	// If none of the above match, check regular expression routes.
-	regexChild []*node
+	regexChild []*node[T]
 	regExpr    *regexp.Regexp
 
 	// If none of the above match, then we use the catch-all, if applicable.
-	catchAllChild *node
+	catchAllChild *node[T]
 
 	// Data for the node is below.
 
@@ -34,13 +34,13 @@ type node struct {
 	// If true, the head handler was set implicitly, so let it also be set explicitly.
 	implicitHead bool
 	// If this node is the end of the URL, then call the handler, if applicable.
-	leafHandler map[string]HandlerFunc
+	leafHandlers map[string]T
 
 	// The names of the parameters to apply.
 	leafWildcardNames []string
 }
 
-func (n *node) sortStaticChild(i int) {
+func (n *node[_]) sortStaticChild(i int) {
 	for i > 0 && n.staticChild[i].priority > n.staticChild[i-1].priority {
 		n.staticChild[i], n.staticChild[i-1] = n.staticChild[i-1], n.staticChild[i]
 		n.staticIndices[i], n.staticIndices[i-1] = n.staticIndices[i-1], n.staticIndices[i]
@@ -48,22 +48,22 @@ func (n *node) sortStaticChild(i int) {
 	}
 }
 
-func (n *node) setHandler(verb string, handler HandlerFunc, implicitHead bool) {
-	if n.leafHandler == nil {
-		n.leafHandler = make(map[string]HandlerFunc)
+func (n *node[T]) setHandler(verb string, handler T, implicitHead bool) {
+	if n.leafHandlers == nil {
+		n.leafHandlers = make(map[string]T)
 	}
-	_, ok := n.leafHandler[verb]
+	_, ok := n.leafHandlers[verb]
 	if ok && (verb != "HEAD" || !n.implicitHead) {
-		panic(fmt.Sprintf("%s already handles %s", n.path, verb))
+		panic(fmt.Sprintf("treemux: %s already handles %s", n.path, verb))
 	}
-	n.leafHandler[verb] = handler
+	n.leafHandlers[verb] = handler
 
 	if verb == "HEAD" {
 		n.implicitHead = implicitHead
 	}
 }
 
-func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *node {
+func (n *node[T]) addPath(path string, wildcards []string, inStaticToken bool) *node[T] {
 	leaf := len(path) == 0
 	if leaf {
 		if wildcards != nil {
@@ -72,12 +72,12 @@ func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *nod
 			if n.leafWildcardNames != nil {
 				if len(n.leafWildcardNames) != len(wildcards) {
 					// This should never happen.
-					panic("Reached leaf node with differing wildcard array length. Please report this as a bug.")
+					panic("treemux: Reached leaf node with differing wildcard array length. Please report this as a bug.")
 				}
 
 				for i := 0; i < len(wildcards); i++ {
 					if n.leafWildcardNames[i] != wildcards[i] {
-						panic(fmt.Sprintf("Wildcards %v are ambiguous with wildcards %v",
+						panic(fmt.Sprintf("treemux: wildcards %v are ambiguous with wildcards %v",
 							n.leafWildcardNames, wildcards))
 					}
 				}
@@ -112,16 +112,16 @@ func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *nod
 		// Token starts with a *, so it's a catch-all
 		thisToken = thisToken[1:]
 		if n.catchAllChild == nil {
-			n.catchAllChild = &node{path: thisToken, isCatchAll: true}
+			n.catchAllChild = &node[T]{path: thisToken, isCatchAll: true}
 		}
 
 		if path[1:] != n.catchAllChild.path {
-			panic(fmt.Sprintf("Catch-all name in %s doesn't match %s. You probably tried to define overlapping catchalls",
+			panic(fmt.Sprintf("treemux: Catch-all name in %s doesn't match %s, You probably tried to define overlapping catchalls.",
 				path, n.catchAllChild.path))
 		}
 
 		if nextSlash != -1 {
-			panic("/ after catch-all found in " + path)
+			panic("treemux: / after catch-all found in " + path)
 		}
 
 		if wildcards == nil {
@@ -141,7 +141,7 @@ func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *nod
 			}
 		}
 		re := regexp.MustCompile(path[1:])
-		child := &node{path: path[1:], isRegex: true, regExpr: re}
+		child := &node[T]{path: path[1:], isRegex: true, regExpr: re}
 		n.regexChild = append(n.regexChild, child)
 		return child
 
@@ -156,7 +156,7 @@ func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *nod
 		}
 
 		if n.wildcardChild == nil {
-			n.wildcardChild = &node{path: "wildcard"}
+			n.wildcardChild = &node[T]{path: "wildcard"}
 		}
 
 		return n.wildcardChild.addPath(remainingPath, wildcards, false)
@@ -198,11 +198,11 @@ func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *nod
 		}
 
 		// No existing node starting with this letter, so create it.
-		child := &node{path: thisToken}
+		child := &node[T]{path: thisToken}
 
 		if n.staticIndices == nil {
 			n.staticIndices = []byte{c}
-			n.staticChild = []*node{child}
+			n.staticChild = []*node[T]{child}
 		} else {
 			n.staticIndices = append(n.staticIndices, c)
 			n.staticChild = append(n.staticChild, child)
@@ -211,7 +211,7 @@ func (n *node) addPath(path string, wildcards []string, inStaticToken bool) *nod
 	}
 }
 
-func (n *node) splitCommonPrefix(existingNodeIndex int, path string) (*node, int) {
+func (n *node[T]) splitCommonPrefix(existingNodeIndex int, path string) (*node[T], int) {
 	childNode := n.staticChild[existingNodeIndex]
 
 	if strings.HasPrefix(path, childNode.path) {
@@ -239,29 +239,29 @@ func (n *node) splitCommonPrefix(existingNodeIndex int, path string) (*node, int
 
 	// Create a new intermediary node in the place of the existing node, with
 	// the existing node as a child.
-	newNode := &node{
+	newNode := &node[T]{
 		path:     commonPrefix,
 		priority: childNode.priority,
 		// Index is the first letter of the non-common part of the path.
 		staticIndices: []byte{childNode.path[0]},
-		staticChild:   []*node{childNode},
+		staticChild:   []*node[T]{childNode},
 	}
 	n.staticChild[existingNodeIndex] = newNode
 
 	return newNode, i
 }
 
-func (n *node) search(method, path string) (found *node, handler HandlerFunc, params []string) {
+func (n *node[T]) search(method, path string) (found *node[T], handler T, params []string) {
 	// if test != nil {
 	// 	test.Logf("Searching for %s in %s", path, n.dumpTree("", ""))
 	// }
+
 	pathLen := len(path)
 	if pathLen == 0 {
-		if len(n.leafHandler) == 0 {
-			return nil, nil, nil
-		} else {
-			return n, n.leafHandler[method], nil
+		if len(n.leafHandlers) == 0 {
+			return
 		}
+		return n, n.leafHandlers[method], nil
 	}
 
 	// First see if this matches a static token.
@@ -278,9 +278,9 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 		}
 	}
 
-	// If we found a node and it had a valid handler, then return here. Otherwise
-	// let's remember that we found this one, but look for a better match.
-	if handler != nil {
+	// If we found a node which has a valid handler, then return here.
+	// Otherwise, let's remember that we found this one, but look for a better match.
+	if handler.IsValid() {
 		return
 	}
 
@@ -296,7 +296,7 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 
 		if len(thisToken) > 0 { // Don't match on empty tokens.
 			wcNode, wcHandler, wcParams := n.wildcardChild.search(method, nextToken)
-			if wcHandler != nil || (found == nil && wcNode != nil) {
+			if wcHandler.IsValid() || (found == nil && wcNode != nil) {
 				unescaped, err := unescape(thisToken)
 				if err != nil {
 					unescaped = thisToken
@@ -308,7 +308,7 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 					wcParams = append(wcParams, unescaped)
 				}
 
-				if wcHandler != nil {
+				if wcHandler.IsValid() {
 					return wcNode, wcHandler, wcParams
 				}
 
@@ -320,12 +320,12 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 		}
 	}
 
-	var reNode *node
+	var reNode *node[T]
 	var reParams []string
 	if len(n.regexChild) > 0 {
 		// Test regex routes in their registering order.
 		reNode, handler, reParams = n.searchRegexChild(method, path)
-		if handler != nil {
+		if handler.IsValid() {
 			return reNode, handler, reParams
 		}
 	}
@@ -334,10 +334,10 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 	if catchAllChild != nil {
 		// Hit the catchall, so just assign the whole remaining path if it
 		// has a matching handler.
-		handler = catchAllChild.leafHandler[method]
+		handler = catchAllChild.leafHandlers[method]
 		// Found a handler, or we found a catchall node without a handler.
 		// Either way, return it since there's nothing left to check after this.
-		if handler != nil || (found == nil && reNode == nil) {
+		if handler.IsValid() || (found == nil && reNode == nil) {
 			unescaped, err := unescape(path)
 			if err != nil {
 				unescaped = path
@@ -355,7 +355,7 @@ func (n *node) search(method, path string) (found *node, handler HandlerFunc, pa
 	return reNode, handler, reParams
 }
 
-func (n *node) searchRegexChild(method, path string) (found *node, handler HandlerFunc, params []string) {
+func (n *node[T]) searchRegexChild(method, path string) (found *node[T], handler T, params []string) {
 	for _, child := range n.regexChild {
 		re := child.regExpr
 		match := re.FindStringSubmatch(path)
@@ -363,23 +363,23 @@ func (n *node) searchRegexChild(method, path string) (found *node, handler Handl
 			continue
 		}
 
-		handler = child.leafHandler[method]
-		if handler != nil {
-			params = match
-			return child, handler, params
+		handler = child.leafHandlers[method]
+		if handler.IsValid() {
+			return child, handler, match
 		}
 
 		// No handler is registered for this method, we return the
 		// regex node and params. In case no catchall handler matches,
 		// report 405 instead of 404.
-		return child, nil, params
+		found, params = child, match
+		break
 	}
-	return nil, nil, nil
+	return
 }
 
-func (n *node) dumpTree(prefix, nodeType string) string {
+func (n *node[_]) dumpTree(prefix, nodeType string) string {
 	line := fmt.Sprintf("%s %02d %s%s [%d] %v wildcards %v\n", prefix, n.priority, nodeType, n.path,
-		len(n.staticChild), n.leafHandler, n.leafWildcardNames)
+		len(n.staticChild), n.leafHandlers, n.leafWildcardNames)
 	prefix += "  "
 	for _, node := range n.staticChild {
 		line += node.dumpTree(prefix, "")
@@ -399,3 +399,5 @@ func (n *node) dumpTree(prefix, nodeType string) string {
 func unescape(path string) (string, error) {
 	return url.PathUnescape(path)
 }
+
+func zero[T HandlerConstraint]() (v T) { return }

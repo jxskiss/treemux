@@ -14,10 +14,12 @@ func TestEmptyGroupAndMapping(t *testing.T) {
 			t.Error(`Expected NewGroup("")`)
 		}
 	}()
-	New().GET("", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {})
+	New[HandlerFunc]().GET("", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {})
 }
+
 func TestSubGroupSlashMapping(t *testing.T) {
-	r := New()
+	r := New[HandlerFunc]()
+
 	r.NewGroup("/foo").GET("/", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 		w.WriteHeader(200)
 	})
@@ -41,7 +43,7 @@ func TestSubGroupSlashMapping(t *testing.T) {
 }
 
 func TestSubGroupEmptyMapping(t *testing.T) {
-	r := New()
+	r := New[HandlerFunc]()
 	r.NewGroup("/foo").GET("", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 		w.WriteHeader(200)
 	})
@@ -54,7 +56,7 @@ func TestSubGroupEmptyMapping(t *testing.T) {
 }
 
 func TestGroupCaseInsensitiveRouting(t *testing.T) {
-	r := New()
+	r := New[HandlerFunc]()
 	r.CaseInsensitive = true
 	r.NewGroup("/MY-path").GET("", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 		w.WriteHeader(200)
@@ -82,7 +84,7 @@ func TestInvalidHandle(t *testing.T) {
 			t.Error("Bad handle path should have caused a panic")
 		}
 	}()
-	New().NewGroup("/foo").GET("bar", nil)
+	New[HandlerFunc]().NewGroup("/foo").GET("bar", nil)
 }
 
 func TestInvalidSubPath(t *testing.T) {
@@ -91,7 +93,7 @@ func TestInvalidSubPath(t *testing.T) {
 			t.Error("Bad sub-path should have caused a panic")
 		}
 	}()
-	New().NewGroup("/foo").NewGroup("bar")
+	New[HandlerFunc]().NewGroup("/foo").NewGroup("bar")
 }
 
 func TestInvalidPath(t *testing.T) {
@@ -100,7 +102,7 @@ func TestInvalidPath(t *testing.T) {
 			t.Error("Bad path should have caused a panic")
 		}
 	}()
-	New().NewGroup("foo")
+	New[HandlerFunc]().NewGroup("foo")
 }
 
 // Liberally borrowed from router_test
@@ -111,7 +113,7 @@ func testGroupMethods(t *testing.T, reqGen RequestCreator, headCanUseGet bool) {
 			result = method
 		}
 	}
-	router := New()
+	router := New[HandlerFunc]()
 	router.HeadCanUseGet = headCanUseGet
 	// Testing with a sub-group of a group as that will test everything at once
 	g := router.NewGroup("/base").NewGroup("/user")
@@ -161,7 +163,7 @@ func TestSetGetAfterHead(t *testing.T) {
 		}
 	}
 
-	router := New()
+	router := New[HandlerFunc]()
 	router.HeadCanUseGet = true
 	router.HEAD("/abc", makeHandler("HEAD"))
 	router.GET("/abc", makeHandler("GET"))

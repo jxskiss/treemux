@@ -77,7 +77,7 @@ func benchRequest(b *testing.B, router http.Handler, r *http.Request) {
 	}
 }
 
-func serve(router *TreeMux, w http.ResponseWriter, r *http.Request, useLookup bool) bool {
+func serve(router *TreeMux[HandlerFunc], w http.ResponseWriter, r *http.Request, useLookup bool) bool {
 	if useLookup {
 		result, found := router.Lookup(w, r)
 		router.ServeLookupResult(w, r, result)
@@ -105,7 +105,7 @@ func testMethods(t *testing.T, newRequest RequestCreator, headCanUseGet bool, us
 		}
 	}
 
-	router := New()
+	router := New[HandlerFunc]()
 	router.HeadCanUseGet = headCanUseGet
 	router.GET("/user/:param", makeHandler("GET"))
 	router.POST("/user/:param", makeHandler("POST"))
@@ -150,7 +150,7 @@ func testMethods(t *testing.T, newRequest RequestCreator, headCanUseGet bool, us
 }
 
 func TestCaseInsensitiveRouting(t *testing.T) {
-	router := New()
+	router := New[HandlerFunc]()
 	// create case-insensitive route
 	router.CaseInsensitive = true
 	router.GET("/MY-path", simpleHandler)
@@ -173,7 +173,7 @@ func TestNotFound(t *testing.T) {
 		calledNotFound = true
 	}
 
-	router := New()
+	router := New[HandlerFunc]()
 	router.GET("/user/abc", simpleHandler)
 
 	w := httptest.NewRecorder()
@@ -216,7 +216,7 @@ func TestMethodNotAllowedHandler(t *testing.T) {
 		}
 	}
 
-	router := New()
+	router := New[HandlerFunc]()
 	router.GET("/user/abc", simpleHandler)
 	router.PUT("/user/abc", simpleHandler)
 	router.DELETE("/user/abc", simpleHandler)
@@ -260,7 +260,7 @@ func TestOptionsHandler(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}
 
-	router := New()
+	router := New[HandlerFunc]()
 	router.GET("/user/abc", simpleHandler)
 	router.PUT("/user/abc", simpleHandler)
 	router.DELETE("/user/abc", simpleHandler)
@@ -326,7 +326,7 @@ func TestOptionsHandler(t *testing.T) {
 
 func TestPanic(t *testing.T) {
 
-	router := New()
+	router := New[HandlerFunc]()
 	router.PanicHandler = SimplePanicHandler
 	router.GET("/abc", panicHandler)
 	r, _ := newRequest("GET", "/abc", nil)
@@ -397,7 +397,7 @@ func testRedirect(t *testing.T, defaultBehavior, getBehavior, postBehavior Redir
 		w.WriteHeader(http.StatusNoContent)
 	}
 
-	router := New()
+	router := New[HandlerFunc]()
 	router.RedirectBehavior = defaultBehavior
 
 	var expectedCodeMap = map[string]int{"PUT": behaviorToCode(defaultBehavior)}
@@ -534,7 +534,7 @@ func testRedirect(t *testing.T, defaultBehavior, getBehavior, postBehavior Redir
 }
 
 func TestSkipRedirect(t *testing.T) {
-	router := New()
+	router := New[HandlerFunc]()
 	router.RedirectTrailingSlash = false
 	router.RedirectCleanPath = false
 	router.GET("/slash/", simpleHandler)
@@ -563,7 +563,7 @@ func TestSkipRedirect(t *testing.T) {
 }
 
 func TestCatchAllTrailingSlashRedirect(t *testing.T) {
-	router := New()
+	router := New[HandlerFunc]()
 	redirectSettings := []bool{false, true}
 
 	router.GET("/abc/*path", simpleHandler)
@@ -611,7 +611,7 @@ func TestRoot(t *testing.T) {
 		handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
 			handlerCalled = true
 		}
-		router := New()
+		router := New[HandlerFunc]()
 		router.GET("/", handler)
 
 		r, _ := scenario.RequestCreator("GET", "/", nil)
@@ -631,7 +631,7 @@ func TestWildcardAtSplitNode(t *testing.T) {
 		suppliedParam, _ = params["slug"]
 	}
 
-	router := New()
+	router := New[HandlerFunc]()
 	router.GET("/pumpkin", simpleHandler)
 	router.GET("/passing", simpleHandler)
 	router.GET("/:slug", simpleHandler)
@@ -681,7 +681,7 @@ func TestSlash(t *testing.T) {
 	ymHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
 		param = params["year"] + " " + params["month"]
 	}
-	router := New()
+	router := New[HandlerFunc]()
 	router.GET("/abc/:param", handler)
 	router.GET("/year/:year/month/:month", ymHandler)
 
@@ -708,7 +708,7 @@ func TestQueryString(t *testing.T) {
 		handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
 			param = params["param"]
 		}
-		router := New()
+		router := New[HandlerFunc]()
 		router.GET("/static", handler)
 		router.GET("/wildcard/:param", handler)
 		router.GET("/catchall/*param", handler)
@@ -746,7 +746,7 @@ func TestPathSource(t *testing.T) {
 	bananaHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
 		called = "bananas"
 	}
-	router := New()
+	router := New[HandlerFunc]()
 	router.GET("/apples", appleHandler)
 	router.GET("/bananas", bananaHandler)
 
@@ -828,7 +828,7 @@ func TestEscapedRoutes(t *testing.T) {
 		}
 
 		t.Log("Recreating router")
-		router := New()
+		router := New[HandlerFunc]()
 		router.EscapeAddedRoutes = escape
 
 		for _, c := range testcases {
@@ -913,7 +913,7 @@ func createRoutes(numRoutes int) []string {
 // TestWriteConcurrency ensures that the router works with multiple goroutines adding
 // routes concurrently.
 func TestWriteConcurrency(t *testing.T) {
-	router := New()
+	router := New[HandlerFunc]()
 
 	// First create a bunch of routes
 	numRoutes := 10000
@@ -960,7 +960,7 @@ func TestWriteConcurrency(t *testing.T) {
 // TestReadWriteConcurrency ensures that when SafeAddRoutesWhileRunning is enabled,
 // the router is able to add routes while serving traffic.
 func TestReadWriteConcurrency(t *testing.T) {
-	router := New()
+	router := New[HandlerFunc]()
 	router.SafeAddRoutesWhileRunning = true
 
 	// First create a bunch of routes
@@ -1021,7 +1021,7 @@ func TestReadWriteConcurrency(t *testing.T) {
 }
 
 func TestLookup(t *testing.T) {
-	router := New()
+	router := New[HandlerFunc]()
 	router.GET("/", simpleHandler)
 	router.GET("/user/dimfeld", simpleHandler)
 	router.POST("/user/dimfeld", simpleHandler)
@@ -1067,7 +1067,7 @@ func TestLookup(t *testing.T) {
 }
 
 func TestRedirectEscapedPath(t *testing.T) {
-	router := New()
+	router := New[HandlerFunc]()
 
 	testHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
 
@@ -1115,7 +1115,7 @@ func TestMiddleware(t *testing.T) {
 		}
 	}
 
-	newMiddleware := func(name string) MiddlewareFunc {
+	newMiddleware := func(name string) MiddlewareFunc[HandlerFunc] {
 		return func(next HandlerFunc) HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
 				record(name)
@@ -1124,7 +1124,7 @@ func TestMiddleware(t *testing.T) {
 		}
 	}
 
-	newParamsMiddleware := func(name string, paramKey string) MiddlewareFunc {
+	newParamsMiddleware := func(name string, paramKey string) MiddlewareFunc[HandlerFunc] {
 		return func(next HandlerFunc) HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
 				t.Log(params)
@@ -1135,16 +1135,8 @@ func TestMiddleware(t *testing.T) {
 		}
 	}
 
-	newHttpHandlerMiddleware := func(name string) func(http.Handler) http.Handler {
-		return func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				record(name)
-				next.ServeHTTP(w, r)
-			})
-		}
-	}
+	router := New[HandlerFunc]()
 
-	router := New()
 	w := httptest.NewRecorder()
 
 	t.Log("No middlewares.")
@@ -1241,7 +1233,7 @@ func TestMiddleware(t *testing.T) {
 
 	t.Log("Test that params are passed to middleware")
 	{
-		router := New()
+		router := New[HandlerFunc]()
 		execLog = nil
 		router.Use(newParamsMiddleware("m1", "p"))
 		router.GET("/h2/:p", newHandler("h2"))
@@ -1252,28 +1244,10 @@ func TestMiddleware(t *testing.T) {
 		assertExecLog([]string{"m1", "paramvalue", "h2"})
 	}
 
-	t.Log("Http Handler Middleware")
-	{
-		router := New()
-		w := httptest.NewRecorder()
-		execLog = nil
-		router.UseHandler(newHttpHandlerMiddleware("m5"))
-		router.Use(newParamsMiddleware("m6", "p"))
-		router.GET("/h7/:p", newHandler("h7"))
-
-		req, _ := newRequest("GET", "/h7/paramvalue", nil)
-		router.ServeHTTP(w, req)
-
-		req, _ = newRequest("GET", "/h7/anothervalue", nil)
-		router.ServeHTTP(w, req)
-
-		assertExecLog([]string{"m5", "m6", "paramvalue", "h7", "m5", "m6", "anothervalue", "h7"})
-	}
-
 }
 
 func BenchmarkRouterSimple(b *testing.B) {
-	router := New()
+	router := New[HandlerFunc]()
 
 	router.GET("/", simpleHandler)
 	router.GET("/user/dimfeld", simpleHandler)
@@ -1284,7 +1258,7 @@ func BenchmarkRouterSimple(b *testing.B) {
 }
 
 func BenchmarkRouterRootWithPanicHandler(b *testing.B) {
-	router := New()
+	router := New[HandlerFunc]()
 	router.PanicHandler = SimplePanicHandler
 
 	router.GET("/", simpleHandler)
@@ -1296,7 +1270,7 @@ func BenchmarkRouterRootWithPanicHandler(b *testing.B) {
 }
 
 func BenchmarkRouterRootWithoutPanicHandler(b *testing.B) {
-	router := New()
+	router := New[HandlerFunc]()
 	router.PanicHandler = nil
 
 	router.GET("/", simpleHandler)
@@ -1308,7 +1282,7 @@ func BenchmarkRouterRootWithoutPanicHandler(b *testing.B) {
 }
 
 func BenchmarkRouterParam(b *testing.B) {
-	router := New()
+	router := New[HandlerFunc]()
 
 	router.GET("/", simpleHandler)
 	router.GET("/user/:name", simpleHandler)
@@ -1319,7 +1293,7 @@ func BenchmarkRouterParam(b *testing.B) {
 }
 
 func BenchmarkRouterLongParams(b *testing.B) {
-	router := New()
+	router := New[HandlerFunc]()
 
 	router.GET("/", simpleHandler)
 	router.GET("/user/:name/:resource", simpleHandler)
