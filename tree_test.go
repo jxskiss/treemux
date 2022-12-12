@@ -82,14 +82,14 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 				t.Errorf("Path %s expected no parameters, saw %v", path, paramList)
 			}
 		}
-		if len(paramList) != len(n.leafWildcardNames) {
+		if len(paramList) != len(n.leafParamNames) {
 			t.Errorf("Got %d params back but node specifies %d",
-				len(paramList), len(n.leafWildcardNames))
+				len(paramList), len(n.leafParamNames))
 		}
 
 		params := map[string]string{}
 		for i := 0; i < len(paramList); i++ {
-			params[n.leafWildcardNames[len(paramList)-i-1]] = paramList[i]
+			params[n.leafParamNames[len(paramList)-i-1]] = paramList[i]
 		}
 		t.Log("\tGot params", params)
 
@@ -113,7 +113,7 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 
 func checkHandlerNodes(t *testing.T, n *node[HandlerFunc]) {
 	hasHandlers := len(n.leafHandlers) != 0
-	hasWildcards := len(n.leafWildcardNames) != 0
+	hasWildcards := len(n.leafParamNames) != 0
 
 	if hasWildcards && !hasHandlers {
 		t.Errorf("Node %s has wildcards without handlers", n.path)
