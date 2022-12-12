@@ -1,0 +1,64 @@
+run:
+  timeout: 5m
+
+linters-settings:
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/jxskiss/treemux)
+  golint:
+    min-confidence: 0
+  goimports:
+    local-prefixes: github.com/jxskiss/treemux
+
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - dogsled
+    - dupl
+    - durationcheck
+    - errcheck
+    - exportloopref
+    - gci
+    - gofmt
+    - goimports
+    - gomoddirectives
+    - goprintffuncname
+    - govet
+    - importas
+    - ineffassign
+    - makezero
+    - misspell
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - stylecheck
+    - tparallel
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+
+issues:
+  exclude-rules:
+    - path: '(.+)_test\.go'
+      linters:
+        - errcheck
+        - funlen
+        - goconst
+        - ineffassign
+        - noctx
+        - revive
+        - staticcheck
+        - stylecheck
+        - unparam
+        - unused
+        - whitespace

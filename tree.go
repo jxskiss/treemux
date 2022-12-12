@@ -2,7 +2,6 @@ package treemux
 
 import (
 	"fmt"
-	"net/url"
 	"regexp"
 	"strings"
 )
@@ -37,7 +36,7 @@ type node[T HandlerConstraint] struct {
 	leafHandlers map[string]T
 
 	// The names of the parameters to apply.
-	leafWildcardNames []string
+	leafParamNames []string
 }
 
 func (n *node[_]) sortStaticChild(i int) {
@@ -63,27 +62,27 @@ func (n *node[T]) setHandler(verb string, handler T, implicitHead bool) {
 	}
 }
 
-func (n *node[T]) addPath(path string, wildcards []string, inStaticToken bool) *node[T] {
+func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) *node[T] {
 	leaf := len(path) == 0
 	if leaf {
-		if wildcards != nil {
-			// Make sure the current wildcards are the same as the old ones.
+		if paramNames != nil {
+			// Make sure the current param names are the same as the old ones.
 			// If not then we have an ambiguous path.
-			if n.leafWildcardNames != nil {
-				if len(n.leafWildcardNames) != len(wildcards) {
+			if n.leafParamNames != nil {
+				if len(n.leafParamNames) != len(paramNames) {
 					// This should never happen.
 					panic("treemux: Reached leaf node with differing wildcard array length. Please report this as a bug.")
 				}
 
-				for i := 0; i < len(wildcards); i++ {
-					if n.leafWildcardNames[i] != wildcards[i] {
+				for i := 0; i < len(paramNames); i++ {
+					if n.leafParamNames[i] != paramNames[i] {
 						panic(fmt.Sprintf("treemux: wildcards %v are ambiguous with wildcards %v",
-							n.leafWildcardNames, wildcards))
+							n.leafParamNames, paramNames))
 					}
 				}
 			} else {
-				// No wildcards yet, so just add the existing set.
-				n.leafWildcardNames = wildcards
+				// No params yet, so just add the existing set.
+				n.leafParamNames = paramNames
 			}
 		}
 
@@ -92,6 +91,7 @@ func (n *node[T]) addPath(path string, wildcards []string, inStaticToken bool) *
 
 	c := path[0]
 	nextSlash := strings.Index(path, "/")
+
 	var thisToken string
 	var tokenEnd int
 
@@ -124,42 +124,51 @@ func (n *node[T]) addPath(path string, wildcards []string, inStaticToken bool) *
 			panic("treemux: / after catch-all found in " + path)
 		}
 
-		if wildcards == nil {
-			wildcards = []string{thisToken}
+		if paramNames == nil {
+			paramNames = []string{thisToken}
 		} else {
-			wildcards = append(wildcards, thisToken)
+			paramNames = append(paramNames, thisToken)
 		}
-		n.catchAllChild.leafWildcardNames = wildcards
+		n.catchAllChild.leafParamNames = paramNames
 
 		return n.catchAllChild
 
 	} else if c == '~' && !inStaticToken {
 		thisToken = thisToken[1:]
 		for _, child := range n.regexChild {
-			if path[1:] == child.path {
+			if thisToken == child.path {
 				return child
 			}
 		}
-		re := regexp.MustCompile(path[1:])
-		child := &node[T]{path: path[1:], isRegex: true, regExpr: re}
+		re, err := regexp.Compile(thisToken)
+		if err != nil {
+			panic(fmt.Sprintf("treemux: regular expression %q is invalid: %v", thisToken, err))
+		}
+		child := &node[T]{path: thisToken, isRegex: true, regExpr: re}
 		n.regexChild = append(n.regexChild, child)
+		if paramNames == nil {
+			paramNames = getRegexParamsNames(re)
+		} else {
+			paramNames = append(paramNames, getRegexParamsNames(re)...)
+		}
+		child.leafParamNames = paramNames
 		return child
 
 	} else if c == ':' && !inStaticToken {
 		// Token starts with a :
 		thisToken = thisToken[1:]
 
-		if wildcards == nil {
-			wildcards = []string{thisToken}
+		if paramNames == nil {
+			paramNames = []string{thisToken}
 		} else {
-			wildcards = append(wildcards, thisToken)
+			paramNames = append(paramNames, thisToken)
 		}
 
 		if n.wildcardChild == nil {
 			n.wildcardChild = &node[T]{path: "wildcard"}
 		}
 
-		return n.wildcardChild.addPath(remainingPath, wildcards, false)
+		return n.wildcardChild.addPath(remainingPath, paramNames, false)
 
 	} else {
 		// if strings.ContainsAny(thisToken, ":*") {
@@ -193,7 +202,7 @@ func (n *node[T]) addPath(path string, wildcards []string, inStaticToken bool) *
 					// Account for the removed backslash.
 					prefixSplit++
 				}
-				return child.addPath(path[prefixSplit:], wildcards, inStaticToken)
+				return child.addPath(path[prefixSplit:], paramNames, inStaticToken)
 			}
 		}
 
@@ -207,7 +216,7 @@ func (n *node[T]) addPath(path string, wildcards []string, inStaticToken bool) *
 			n.staticIndices = append(n.staticIndices, c)
 			n.staticChild = append(n.staticChild, child)
 		}
-		return child.addPath(remainingPath, wildcards, inStaticToken)
+		return child.addPath(remainingPath, paramNames, inStaticToken)
 	}
 }
 
@@ -378,8 +387,9 @@ func (n *node[T]) searchRegexChild(method, path string) (found *node[T], handler
 }
 
 func (n *node[_]) dumpTree(prefix, nodeType string) string {
-	line := fmt.Sprintf("%s %02d %s%s [%d] %v wildcards %v\n", prefix, n.priority, nodeType, n.path,
-		len(n.staticChild), n.leafHandlers, n.leafWildcardNames)
+	methods := getSortedKeys(n.leafHandlers)
+	line := fmt.Sprintf("%s %02d %s%s [%d] %v params %v\n",
+		prefix, n.priority, nodeType, n.path, len(n.staticChild), methods, n.leafParamNames)
 	prefix += "  "
 	for _, node := range n.staticChild {
 		line += node.dumpTree(prefix, "")
@@ -395,9 +405,3 @@ func (n *node[_]) dumpTree(prefix, nodeType string) string {
 	}
 	return line
 }
-
-func unescape(path string) (string, error) {
-	return url.PathUnescape(path)
-}
-
-func zero[T HandlerConstraint]() (v T) { return }

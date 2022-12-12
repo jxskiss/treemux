@@ -298,14 +298,14 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 				}
 			}
 		} else {
-			if numParams != len(n.leafWildcardNames) {
+			if numParams != len(n.leafParamNames) {
 				// Need better behavior here. Should this be a panic?
 				panic(fmt.Sprintf("treemux: parameter list length mismatch: %v, %v",
-					params, n.leafWildcardNames))
+					params, n.leafParamNames))
 			}
 
 			for index := 0; index < numParams; index++ {
-				paramMap[n.leafWildcardNames[numParams-index-1]] = params[index]
+				paramMap[n.leafParamNames[numParams-index-1]] = params[index]
 			}
 		}
 	}
