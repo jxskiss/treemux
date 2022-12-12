@@ -52,10 +52,10 @@ func renderPrettyError(rw http.ResponseWriter, req *http.Request, err interface{
 	rw.WriteHeader(http.StatusInternalServerError)
 
 	tpl := template.Must(template.New("ErrorPage").Parse(panicPageTpl))
-	tpl.Execute(rw, data)
+	tpl.Execute(rw, data) //nolint:errcheck
 }
 
-func ShowErrorsJsonPanicHandler(w http.ResponseWriter, r *http.Request, err interface{}) {
+func ShowErrorsJSONPanicHandler(w http.ResponseWriter, r *http.Request, err interface{}) {
 	const size = 4096
 	stack := make([]byte, size)
 	stack = stack[:runtime.Stack(stack, false)]
@@ -65,7 +65,7 @@ func ShowErrorsJsonPanicHandler(w http.ResponseWriter, r *http.Request, err inte
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusInternalServerError)
-	json.NewEncoder(w).Encode(data)
+	json.NewEncoder(w).Encode(data) //nolint:errcheck
 }
 
 func readErrorFileLines(filePath string, errorLine int) map[int]string {

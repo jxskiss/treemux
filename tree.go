@@ -91,6 +91,7 @@ func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) 
 
 	c := path[0]
 	nextSlash := strings.Index(path, "/")
+
 	var thisToken string
 	var tokenEnd int
 
@@ -135,15 +136,15 @@ func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) 
 	} else if c == '~' && !inStaticToken {
 		thisToken = thisToken[1:]
 		for _, child := range n.regexChild {
-			if path[1:] == child.path {
+			if thisToken == child.path {
 				return child
 			}
 		}
-		re, err := regexp.Compile(path[1:])
+		re, err := regexp.Compile(thisToken)
 		if err != nil {
-			panic(fmt.Sprintf("treemux: regular expression %q is invalid: %v", path[1:], err))
+			panic(fmt.Sprintf("treemux: regular expression %q is invalid: %v", thisToken, err))
 		}
-		child := &node[T]{path: path[1:], isRegex: true, regExpr: re}
+		child := &node[T]{path: thisToken, isRegex: true, regExpr: re}
 		n.regexChild = append(n.regexChild, child)
 		if paramNames == nil {
 			paramNames = getRegexParamsNames(re)
