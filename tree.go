@@ -2,7 +2,6 @@ package treemux
 
 import (
 	"fmt"
-	"net/url"
 	"regexp"
 	"strings"
 )
@@ -140,9 +139,18 @@ func (n *node[T]) addPath(path string, wildcards []string, inStaticToken bool) *
 				return child
 			}
 		}
-		re := regexp.MustCompile(path[1:])
+		re, err := regexp.Compile(path[1:])
+		if err != nil {
+			panic(fmt.Sprintf("treemux: regular expression %q is invalid: %v", path[1:], err))
+		}
 		child := &node[T]{path: path[1:], isRegex: true, regExpr: re}
 		n.regexChild = append(n.regexChild, child)
+		if wildcards == nil {
+			wildcards = getRegexParamsNames(re)
+		} else {
+			wildcards = append(wildcards, getRegexParamsNames(re)...)
+		}
+		child.leafWildcardNames = wildcards
 		return child
 
 	} else if c == ':' && !inStaticToken {
@@ -378,8 +386,9 @@ func (n *node[T]) searchRegexChild(method, path string) (found *node[T], handler
 }
 
 func (n *node[_]) dumpTree(prefix, nodeType string) string {
+	methods := getSortedKeys(n.leafHandlers)
 	line := fmt.Sprintf("%s %02d %s%s [%d] %v wildcards %v\n", prefix, n.priority, nodeType, n.path,
-		len(n.staticChild), n.leafHandlers, n.leafWildcardNames)
+		len(n.staticChild), methods, n.leafWildcardNames)
 	prefix += "  "
 	for _, node := range n.staticChild {
 		line += node.dumpTree(prefix, "")
@@ -395,9 +404,3 @@ func (n *node[_]) dumpTree(prefix, nodeType string) string {
 	}
 	return line
 }
-
-func unescape(path string) (string, error) {
-	return url.PathUnescape(path)
-}
-
-func zero[T HandlerConstraint]() (v T) { return }

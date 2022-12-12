@@ -279,6 +279,17 @@ func TestTree(t *testing.T) {
 	test = nil
 }
 
+func TestDumpTree(t *testing.T) {
+	router := New[HandlerFunc]()
+	router.GET("/pumpkin", simpleHandler)
+	router.GET("/passing", simpleHandler)
+	router.GET("/:slug", simpleHandler)
+	router.GET("/:slug/:abc/def/:ghi", simpleHandler)
+	router.POST("/re/~^some-(?P<var1>\\w+)-(?P<var2>\\d+)-(.*)$", simpleHandler)
+
+	t.Log("\n" + router.root.dumpTree("", " "))
+}
+
 func TestPanics(t *testing.T) {
 	sawPanic := false
 
