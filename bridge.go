@@ -2,7 +2,6 @@ package treemux
 
 import (
 	"net/http"
-	"net/url"
 	"reflect"
 )
 
@@ -10,8 +9,8 @@ import (
 // `func(http.Handler) http.Handler`.
 type HTTPHandlerMiddleware func(http.Handler) http.Handler
 
-// Bridge is a bridge which connects TreeMux and user defined handlers
-// by converting type-specific information.
+// Bridge is a bridge which helps TreeMux with user defined handlers
+// to work together with [http.Handler] and [http.HandlerFunc] in stdlib.
 type Bridge[T HandlerConstraint] interface {
 
 	// ToHTTPHandlerFunc convert a handler T and params to [http.HandlerFunc].
@@ -25,9 +24,6 @@ type Bridge[T HandlerConstraint] interface {
 func (t *TreeMux[T]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if t.PanicHandler != nil {
 		defer t.serveHTTPPanic(w, r)
-	}
-	if t.Bridge == nil {
-		panic("treemux: Bridge is not configured")
 	}
 
 	if t.SafeAddRoutesWhileRunning {
@@ -46,6 +42,7 @@ func (t *TreeMux[T]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeLookupResult serves a request, given a lookup result from the Lookup function.
+// TreeMux.Bridge must be configured, else it panics.
 func (t *TreeMux[T]) ServeLookupResult(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -65,21 +62,15 @@ func (t *TreeMux[T]) ServeLookupResult(
 	}
 
 	if lr.handler.IsValid() {
+		if t.Bridge == nil {
+			panic("treemux: Bridge is not configured")
+		}
 		t.Bridge.ToHTTPHandlerFunc(lr.handler, lr.Params)(w, r)
 	} else if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.registeredMethods) > 0 {
 		t.MethodNotAllowedHandler(w, r, lr.registeredMethods)
 	} else {
 		t.NotFoundHandler(w, r)
 	}
-}
-
-func redirect(w http.ResponseWriter, r *http.Request, newPath string, statusCode int) {
-	newURL := url.URL{
-		Path:     newPath,
-		RawQuery: r.URL.RawQuery,
-		Fragment: r.URL.Fragment,
-	}
-	http.Redirect(w, r, newURL.String(), statusCode)
 }
 
 // UseHandler is like Use but accepts [http.Handler] middleware.
@@ -125,6 +116,7 @@ func (b httpTreeMuxBridge) ConvertMiddleware(middleware HTTPHandlerMiddleware) M
 }
 
 // HTTPHandlerFunc equals http.HandlerFunc.
+// It satisfies HandlerConstraint, thus it can be used with TreeMux.
 type HTTPHandlerFunc func(w http.ResponseWriter, r *http.Request)
 
 func (p HTTPHandlerFunc) IsValid() bool { return p != nil }

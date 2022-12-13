@@ -125,13 +125,8 @@ func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) 
 			panic("treemux: / after catch-all found in " + path)
 		}
 
-		if paramNames == nil {
-			paramNames = []string{thisToken}
-		} else {
-			paramNames = append(paramNames, thisToken)
-		}
+		paramNames = append(paramNames, thisToken)
 		n.catchAllChild.leafParamNames = paramNames
-
 		return n.catchAllChild
 
 	} else if c == '~' && !inStaticToken {
@@ -147,28 +142,18 @@ func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) 
 		}
 		child := &node[T]{path: thisToken, isRegex: true, regExpr: re}
 		n.regexChild = append(n.regexChild, child)
-		if paramNames == nil {
-			paramNames = getRegexParamsNames(re)
-		} else {
-			paramNames = append(paramNames, getRegexParamsNames(re)...)
-		}
+		paramNames = append(paramNames, getRegexParamNames(re)...)
 		child.leafParamNames = paramNames
 		return child
 
 	} else if c == ':' && !inStaticToken {
 		// Token starts with a :
 		thisToken = thisToken[1:]
-
-		if paramNames == nil {
-			paramNames = []string{thisToken}
-		} else {
-			paramNames = append(paramNames, thisToken)
-		}
+		paramNames = append(paramNames, thisToken)
 
 		if n.wildcardChild == nil {
 			n.wildcardChild = &node[T]{path: "wildcard"}
 		}
-
 		return n.wildcardChild.addPath(remainingPath, paramNames, false)
 
 	} else {
@@ -312,31 +297,29 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 					unescaped = thisToken
 				}
 
-				if wcParams == nil {
-					wcParams = []string{unescaped}
-				} else {
-					wcParams = append(wcParams, unescaped)
-				}
+				wcParams = append(wcParams, unescaped)
 
 				if wcHandler.IsValid() {
 					return wcNode, wcHandler, wcParams
 				}
 
 				// Didn't actually find a handler here, so remember that we
-				// found a node but also see if we can fall through to the
-				// catchall.
+				// found a node but also see if we can fall through to regex
+				// and catchall routes.
 				found, handler, params = wcNode, wcHandler, wcParams
 			}
 		}
 	}
 
-	var reNode *node[T]
-	var reParams []string
 	if len(n.regexChild) > 0 {
-		// Test regex routes in their registering order.
-		reNode, handler, reParams = n.searchRegexChild(method, path)
-		if handler.IsValid() {
-			return reNode, handler, reParams
+		reNode, reHandler, reParams := n.searchRegexChild(method, path)
+		if reHandler.IsValid() || (found == nil && reNode != nil) {
+			if reHandler.IsValid() {
+				return reNode, reHandler, reParams
+			}
+
+			// Remember that we found a node.
+			found, handler, params = reNode, reHandler, reParams
 		}
 	}
 
@@ -347,7 +330,7 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 		handler = catchAllChild.leafHandlers[method]
 		// Found a handler, or we found a catchall node without a handler.
 		// Either way, return it since there's nothing left to check after this.
-		if handler.IsValid() || (found == nil && reNode == nil) {
+		if handler.IsValid() || found == nil {
 			unescaped, err := unescape(path)
 			if err != nil {
 				unescaped = path
@@ -357,14 +340,10 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 		}
 	}
 
-	// In case we found a child node without corresponding method handler,
-	// return the child node, return it.
-	if found != nil {
-		return found, handler, params
-	}
-	return reNode, handler, reParams
+	return found, handler, params
 }
 
+// searchRegexChild search a node's regex children in their registering order.
 func (n *node[T]) searchRegexChild(method, path string) (found *node[T], handler T, params []string) {
 	for _, child := range n.regexChild {
 		re := child.regExpr
@@ -373,15 +352,23 @@ func (n *node[T]) searchRegexChild(method, path string) (found *node[T], handler
 			continue
 		}
 
+		found = child
 		handler = child.leafHandlers[method]
+		params = getRegexMatchParams(re, match)
+		for i, param := range params {
+			unescaped, err := unescape(param)
+			if err == nil {
+				params[i] = unescaped
+			}
+		}
+
 		if handler.IsValid() {
-			return child, handler, match
+			return
 		}
 
 		// No handler is registered for this method, we return the
 		// regex node and params. In case no catchall handler matches,
 		// report 405 instead of 404.
-		found, params = child, match
 		break
 	}
 	return

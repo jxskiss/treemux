@@ -2,7 +2,6 @@ package treemux
 
 import (
 	"net/http"
-	"reflect"
 	"testing"
 )
 
@@ -64,49 +63,35 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 		t.Error("Node and subtree was\n" + n.dumpTree("", " "))
 	}
 
-	if n.isRegex {
-		paramMap := make(map[string]string)
-		for i, name := range n.regExpr.SubexpNames() {
-			if i > 0 && name != "" {
-				paramMap[name] = paramList[i]
-			}
+	if expectedParams == nil {
+		if len(paramList) != 0 {
+			t.Errorf("Path %s expected no parameters, saw %v", path, paramList)
 		}
-		if len(expectedParams) != len(paramMap) {
-			t.Errorf("Path %s expected no parameters, got %v", path, paramMap)
-		} else if len(expectedParams) > 0 && !reflect.DeepEqual(paramMap, expectedParams) {
-			t.Errorf("Regexp params not match, want %v, but got %v", expectedParams, paramMap)
-		}
-	} else {
-		if expectedParams == nil {
-			if len(paramList) != 0 {
-				t.Errorf("Path %s expected no parameters, saw %v", path, paramList)
-			}
-		}
-		if len(paramList) != len(n.leafParamNames) {
-			t.Errorf("Got %d params back but node specifies %d",
-				len(paramList), len(n.leafParamNames))
+	}
+	if len(paramList) != len(n.leafParamNames) {
+		t.Errorf("Got %d params back but node specifies %d",
+			len(paramList), len(n.leafParamNames))
+	}
+
+	params := map[string]string{}
+	for i := 0; i < len(paramList); i++ {
+		params[n.leafParamNames[len(paramList)-i-1]] = paramList[i]
+	}
+	t.Log("\tGot params", params)
+
+	for key, val := range expectedParams {
+		sawVal, ok := params[key]
+		if !ok {
+			t.Errorf("Path %s matched without key %s", path, key)
+		} else if sawVal != val {
+			t.Errorf("Path %s expected param %s to be %s, saw %s", path, key, val, sawVal)
 		}
 
-		params := map[string]string{}
-		for i := 0; i < len(paramList); i++ {
-			params[n.leafParamNames[len(paramList)-i-1]] = paramList[i]
-		}
-		t.Log("\tGot params", params)
+		delete(params, key)
+	}
 
-		for key, val := range expectedParams {
-			sawVal, ok := params[key]
-			if !ok {
-				t.Errorf("Path %s matched without key %s", path, key)
-			} else if sawVal != val {
-				t.Errorf("Path %s expected param %s to be %s, saw %s", path, key, val, sawVal)
-			}
-
-			delete(params, key)
-		}
-
-		for key, val := range params {
-			t.Errorf("Path %s returned unexpected param %s=%s", path, key, val)
-		}
+	for key, val := range params {
+		t.Errorf("Path %s returned unexpected param %s=%s", path, key, val)
 	}
 
 }

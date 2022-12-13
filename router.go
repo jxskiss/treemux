@@ -211,14 +211,10 @@ func (t *TreeMux[_]) redirectStatusCode(method string) (int, bool) {
 }
 
 func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result LookupResult[T], found bool) {
-
-	result.StatusCode = http.StatusNotFound
 	path := r.RequestURI
-	unescapedPath := r.URL.Path
 	pathLen := len(path)
 	if pathLen > 0 && t.PathSource == RequestURI {
 		rawQueryLen := len(r.URL.RawQuery)
-
 		if rawQueryLen != 0 || path[pathLen-1] == '?' {
 			// Remove any query string and the ?.
 			path = path[:pathLen-rawQueryLen-1]
@@ -230,6 +226,17 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 		path = r.URL.Path
 		pathLen = len(path)
 	}
+
+	unescapedPath := r.URL.Path
+
+	return t.lookupByPath(r.Method, path, unescapedPath)
+}
+
+func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result LookupResult[T], found bool) {
+
+	result.StatusCode = http.StatusNotFound
+
+	pathLen := len(path)
 	if t.CaseInsensitive {
 		path = strings.ToLower(path)
 		unescapedPath = strings.ToLower(unescapedPath)
@@ -241,18 +248,18 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 		unescapedPath = unescapedPath[:len(unescapedPath)-1]
 	}
 
-	n, handler, params := t.root.search(r.Method, path[1:])
+	n, handler, params := t.root.search(method, path[1:])
 	if n == nil {
 		if t.RedirectCleanPath {
 			// Path was not found. Try cleaning it up and search again.
 			// TODO Test this
 			cleanPath := Clean(unescapedPath)
-			n, handler, params = t.root.search(r.Method, cleanPath[1:])
+			n, handler, params = t.root.search(method, cleanPath[1:])
 			if n == nil {
 				// Still nothing found.
 				return
 			}
-			if statusCode, ok := t.redirectStatusCode(r.Method); ok {
+			if statusCode, ok := t.redirectStatusCode(method); ok {
 				// Redirect to the actual path
 				result.StatusCode = statusCode
 				result.redirectPath = cleanPath
@@ -267,7 +274,7 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 	}
 
 	if !handler.IsValid() {
-		if r.Method == "OPTIONS" && t.OptionsHandler.IsValid() {
+		if method == "OPTIONS" && t.OptionsHandler.IsValid() {
 			handler = t.OptionsHandler
 		}
 
@@ -281,7 +288,7 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 
 	if !n.isCatchAll || t.RemoveCatchAllTrailingSlash {
 		if trailingSlash != n.addSlash && t.RedirectTrailingSlash {
-			if statusCode, ok := t.redirectStatusCode(r.Method); ok {
+			if statusCode, ok := t.redirectStatusCode(method); ok {
 				if n.addSlash {
 					result.StatusCode = statusCode
 					result.redirectPath = unescapedPath + "/"
@@ -300,25 +307,16 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 	}
 
 	var paramMap map[string]string
-	if len(params) != 0 {
-		numParams := len(params)
-		paramMap = make(map[string]string, numParams)
-		if n.isRegex {
-			for i, name := range n.regExpr.SubexpNames() {
-				if i > 0 && name != "" {
-					paramMap[name] = params[i]
-				}
-			}
-		} else {
-			if numParams != len(n.leafParamNames) {
-				// Need better behavior here. Should this be a panic?
-				panic(fmt.Sprintf("treemux: parameter list length mismatch: %v, %v",
-					params, n.leafParamNames))
-			}
+	if num := len(params); num > 0 {
+		if num != len(n.leafParamNames) {
+			// Need better behavior here. Should this be a panic?
+			panic(fmt.Sprintf("treemux: parameter list length mismatch: %v, %v",
+				params, n.leafParamNames))
+		}
 
-			for index := 0; index < numParams; index++ {
-				paramMap[n.leafParamNames[numParams-index-1]] = params[index]
-			}
+		paramMap = make(map[string]string, num)
+		for i := 0; i < num; i++ {
+			paramMap[n.leafParamNames[num-i-1]] = params[i]
 		}
 	}
 
@@ -341,18 +339,18 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 // to be served appropriately.
 func (t *TreeMux[T]) Lookup(w http.ResponseWriter, r *http.Request) (LookupResult[T], bool) {
 	if t.SafeAddRoutesWhileRunning {
-		// In concurrency safe mode, we acquire a read lock on the mutex for any access.
-		// This is optional to avoid potential performance loss in high-usage scenarios.
 		t.mutex.RLock()
+		defer t.mutex.RUnlock()
 	}
+	return t.lookup(w, r)
+}
 
-	result, found := t.lookup(w, r)
-
+func (t *TreeMux[T]) LookupByPath(method, path, unescapedPath string) (LookupResult[T], bool) {
 	if t.SafeAddRoutesWhileRunning {
-		t.mutex.RUnlock()
+		t.mutex.RLock()
+		defer t.mutex.RUnlock()
 	}
-
-	return result, found
+	return t.lookupByPath(method, path, unescapedPath)
 }
 
 // defaultMethodNotAllowedHandler is the default handler for TreeMux.MethodNotAllowedHandler,
