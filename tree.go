@@ -7,7 +7,8 @@ import (
 )
 
 type node[T HandlerConstraint] struct {
-	path string
+	path     string
+	fullPath string
 
 	priority int
 

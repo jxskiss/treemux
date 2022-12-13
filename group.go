@@ -126,6 +126,7 @@ func (g *Group[T]) Handle(method string, path string, handler T) {
 }
 
 func (g *Group[T]) addFullStackHandler(method string, path string, handler T) {
+	fullPath := g.path + path
 	addSlash := false
 	addOne := func(thePath string) {
 		if g.mux.CaseInsensitive {
@@ -137,6 +138,7 @@ func (g *Group[T]) addFullStackHandler(method string, path string, handler T) {
 			node.addSlash = true
 		}
 		node.setHandler(method, handler, false)
+		node.fullPath = fullPath
 
 		if g.mux.HeadCanUseGet && method == "GET" && !node.leafHandlers["HEAD"].IsValid() {
 			node.setHandler("HEAD", handler, true)

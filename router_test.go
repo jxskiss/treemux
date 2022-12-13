@@ -36,10 +36,10 @@ type TestScenario struct {
 }
 
 var scenarios = []TestScenario{
-	TestScenario{newRequest, false, "Test with RequestURI and normal ServeHTTP"},
-	TestScenario{http.NewRequest, false, "Test with URL.Path and normal ServeHTTP"},
-	TestScenario{newRequest, true, "Test with RequestURI and LookupResult"},
-	TestScenario{http.NewRequest, true, "Test with URL.Path and LookupResult"},
+	{newRequest, false, "Test with RequestURI and normal ServeHTTP"},
+	{http.NewRequest, false, "Test with URL.Path and normal ServeHTTP"},
+	{newRequest, true, "Test with RequestURI and LookupResult"},
+	{http.NewRequest, true, "Test with URL.Path and LookupResult"},
 }
 
 // This type and the benchRequest function are modified from go-http-routing-benchmark.
@@ -197,22 +197,15 @@ func TestMethodNotAllowedHandler(t *testing.T) {
 	calledNotAllowed := false
 
 	notAllowedHandler := func(w http.ResponseWriter, r *http.Request,
-		methods map[string]HandlerFunc) {
+		registeredMethods []string) {
+
+		expected := []string{"DELETE", "GET", "HEAD", "PUT"}
 
 		calledNotAllowed = true
 
-		expected := []string{"GET", "PUT", "DELETE", "HEAD"}
-		allowed := make([]string, 0)
-		for m := range methods {
-			allowed = append(allowed, m)
-		}
-
-		sort.Strings(expected)
-		sort.Strings(allowed)
-
-		if !reflect.DeepEqual(expected, allowed) {
+		if !reflect.DeepEqual(expected, registeredMethods) {
 			t.Errorf("Custom handler expected map %v, saw %v",
-				expected, allowed)
+				expected, registeredMethods)
 		}
 	}
 

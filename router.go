@@ -16,6 +16,8 @@ import (
 
 type PanicHandler func(http.ResponseWriter, *http.Request, interface{})
 
+type MethodNotAllowedHandler func(w http.ResponseWriter, r *http.Request, registeredMethods []string)
+
 // RedirectBehavior sets the behavior when the router redirects the request to the
 // canonical version of the requested URL using RedirectTrailingSlash or RedirectClean.
 // The default behavior is to return a 301 status, redirecting the browser to the version
@@ -61,7 +63,7 @@ type HandlerConstraint interface {
 }
 
 // LookupResult contains information about a route lookup, which is returned from Lookup and
-// can be passed to ServeLookupResult if the request should be served.
+// can be passed to [TreeMux.ServeLookupResult] if the request should be served.
 type LookupResult[T HandlerConstraint] struct {
 	// StatusCode informs the caller about the result of the lookup.
 	// This will generally be `http.StatusNotFound` or `http.StatusMethodNotAllowed`
@@ -76,8 +78,9 @@ type LookupResult[T HandlerConstraint] struct {
 	// Non-empty redirectPath indicates that the request should be redirected.
 	redirectPath string
 
-	handler      T
-	leafHandlers map[string]T // Only has a value when StatusCode is MethodNotAllowed.
+	handler           T
+	routePath         string
+	registeredMethods []string // Only has a value when StatusCode is MethodNotAllowed.
 }
 
 // TreeMux is a generic HTTP request router.
@@ -101,20 +104,17 @@ type TreeMux[T HandlerConstraint] struct {
 	PanicHandler PanicHandler
 
 	// The default NotFoundHandler is http.NotFound.
-	NotFoundHandler func(w http.ResponseWriter, r *http.Request)
+	NotFoundHandler http.HandlerFunc
 
 	// Any OPTIONS request that matches a path without its own OPTIONS handler will use this handler,
 	// if set, instead of calling MethodNotAllowedHandler.
 	OptionsHandler T
 
 	// MethodNotAllowedHandler is called when a pattern matches, but that
-	// pattern does not have a handler for the requested method. The default
-	// handler just writes the status code http.StatusMethodNotAllowed and adds
-	// the required "Allowed" header.
-	// The methods parameter contains the map of each method to the corresponding
-	// handler function.
-	MethodNotAllowedHandler func(w http.ResponseWriter, r *http.Request,
-		methods map[string]T)
+	// pattern does not have a handler for the requested method.
+	// The default handler just writes the status code
+	// http.StatusMethodNotAllowed and adds the required "Allow" header.
+	MethodNotAllowedHandler MethodNotAllowedHandler
 
 	// HeadCanUseGet allows the router to use the GET handler to respond to
 	// HEAD requests if no explicit HEAD handler has been added for the
@@ -160,9 +160,13 @@ type TreeMux[T HandlerConstraint] struct {
 	// If present, override the default context with this one.
 	DefaultContext context.Context
 
-	// SafeAddRoutesWhileRunning tells the router to protect all accesses to the tree with an RWMutex. This is only needed
-	// if you are going to add routes after the router has already begun serving requests. There is a potential
-	// performance penalty at high load.
+	// UseContextData tells the router to populate router-related data to the context
+	// associated with a request.
+	UseContextData bool
+
+	// SafeAddRoutesWhileRunning tells the router to protect all accesses to the tree with an RWMutex.
+	// This is only needed if you are going to add routes after the router has already begun serving requests.
+	// There is a potential performance penalty at high load.
 	SafeAddRoutesWhileRunning bool
 
 	// CaseInsensitive determines if routes should be treated as case-insensitive.
@@ -172,6 +176,13 @@ type TreeMux[T HandlerConstraint] struct {
 // Dump returns a text representation of the routing tree.
 func (t *TreeMux[_]) Dump() string {
 	return t.root.dumpTree("", "")
+}
+
+func (t *TreeMux[T]) setDefaultRequestContext(r *http.Request) *http.Request {
+	if t.DefaultContext != nil {
+		r = r.WithContext(t.DefaultContext)
+	}
+	return r
 }
 
 func (t *TreeMux[_]) serveHTTPPanic(w http.ResponseWriter, r *http.Request) {
@@ -248,6 +259,7 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 				// Redirect to the actual path
 				result.StatusCode = statusCode
 				result.redirectPath = cleanPath
+				result.routePath = n.fullPath
 				found = true
 				return
 			}
@@ -263,8 +275,9 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 		}
 
 		if !handler.IsValid() {
-			result.leafHandlers = n.leafHandlers
 			result.StatusCode = http.StatusMethodNotAllowed
+			result.routePath = n.fullPath
+			result.registeredMethods = getSortedKeys(n.leafHandlers)
 			return
 		}
 	}
@@ -275,9 +288,11 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 				if n.addSlash {
 					result.StatusCode = statusCode
 					result.redirectPath = unescapedPath + "/"
+					result.routePath = n.fullPath
 				} else if path != "/" {
 					result.StatusCode = statusCode
 					result.redirectPath = unescapedPath
+					result.routePath = n.fullPath
 				}
 				if result.redirectPath != "" {
 					found = true
@@ -313,6 +328,7 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 	result = LookupResult[T]{
 		StatusCode: http.StatusOK,
 		Params:     paramMap,
+		routePath:  n.fullPath,
 		handler:    handler,
 	}
 	found = true
@@ -342,17 +358,14 @@ func (t *TreeMux[T]) Lookup(w http.ResponseWriter, r *http.Request) (LookupResul
 	return result, found
 }
 
-// MethodNotAllowedHandler is the default handler for TreeMux.MethodNotAllowedHandler,
+// defaultMethodNotAllowedHandler is the default handler for TreeMux.MethodNotAllowedHandler,
 // which is called for patterns that match, but do not have a handler installed for the
 // requested method. It simply writes the status code http.StatusMethodNotAllowed and fills
 // in the `Allow` header value appropriately.
-func MethodNotAllowedHandler[T HandlerConstraint](w http.ResponseWriter, r *http.Request,
-	methods map[string]T) {
+func defaultMethodNotAllowedHandler(
+	w http.ResponseWriter, r *http.Request, registeredMethods []string) {
 
-	for m := range methods {
-		w.Header().Add("Allow", m)
-	}
-
+	w.Header()["Allow"] = registeredMethods
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
@@ -360,7 +373,7 @@ func New[T HandlerConstraint]() *TreeMux[T] {
 	tm := &TreeMux[T]{
 		root:                    &node[T]{path: "/"},
 		NotFoundHandler:         http.NotFound,
-		MethodNotAllowedHandler: MethodNotAllowedHandler[T],
+		MethodNotAllowedHandler: defaultMethodNotAllowedHandler,
 		HeadCanUseGet:           true,
 		RedirectTrailingSlash:   true,
 		RedirectCleanPath:       true,

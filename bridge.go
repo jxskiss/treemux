@@ -53,22 +53,21 @@ func (t *TreeMux[T]) ServeLookupResult(
 		redirect(w, r, lr.redirectPath, lr.StatusCode)
 		return
 	}
-	if !lr.handler.IsValid() {
-		if lr.StatusCode == http.StatusMethodNotAllowed && lr.leafHandlers != nil {
-			if t.SafeAddRoutesWhileRunning {
-				t.mutex.RLock()
-			}
 
-			t.MethodNotAllowedHandler(w, r, lr.leafHandlers)
+	r = t.setDefaultRequestContext(r)
+	if t.UseContextData {
+		r = AddContextData(r, &contextData{
+			route:  lr.routePath,
+			params: lr.Params,
+		})
+	}
 
-			if t.SafeAddRoutesWhileRunning {
-				t.mutex.RUnlock()
-			}
-		} else {
-			t.NotFoundHandler(w, r)
-		}
-	} else {
+	if lr.handler.IsValid() {
 		t.BridgeFunc(lr.handler, lr.Params)(w, r)
+	} else if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.registeredMethods) > 0 {
+		t.MethodNotAllowedHandler(w, r, lr.registeredMethods)
+	} else {
+		t.NotFoundHandler(w, r)
 	}
 }
 
@@ -125,9 +124,6 @@ type HTTPHandlerFunc func(w http.ResponseWriter, r *http.Request)
 func (p HTTPHandlerFunc) IsValid() bool { return p != nil }
 
 func httpHandlerBridge(h HTTPHandlerFunc, params map[string]string) http.HandlerFunc {
-
-	// TODO: params
-
 	return http.HandlerFunc(h)
 }
 
