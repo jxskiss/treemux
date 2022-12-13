@@ -92,13 +92,10 @@ type TreeMux[T HandlerConstraint] struct {
 
 	Group[T]
 
-	// Optional bridge function to convert Handler to [http.HandlerFunc].
-	// This is unnecessary when you don't use http.Handler.
-	BridgeFunc HandlerBridge[T]
-
-	// Optional bridge function to convert [http.Handler] middleware to MiddlewareFunc.
-	// This is unnecessary when you don't use http.Handler middlewares.
-	MiddlewareWrapper MiddlewareBridge[T]
+	// Optional bridge to work with [http.Handler] and [http.HandlerFunc].
+	// This is unnecessary when you don't use http.HandlerFunc and http.Handler
+	// based middlewares.
+	Bridge Bridge[T]
 
 	// The default PanicHandler just returns a 500 code.
 	PanicHandler PanicHandler
