@@ -20,7 +20,7 @@ type Bridge[T HandlerConstraint] interface {
 	// ToHTTPHandlerFunc convert a handler T and params to [http.HandlerFunc].
 	//
 	// This method is unnecessary when you don't use http.Handler features.
-	ToHTTPHandlerFunc(handler T, urlParams map[string]string) http.HandlerFunc
+	ToHTTPHandlerFunc(handler T, urlParams Params) http.HandlerFunc
 
 	// ConvertMiddleware converts a HTTPHandlerMiddleware to MiddlewareFunc[T].
 	//
@@ -34,18 +34,7 @@ func (t *TreeMux[T]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer t.serveHTTPPanic(w, r)
 	}
 
-	if t.SafeAddRoutesWhileRunning {
-		// In concurrency safe mode, we acquire a read lock on the mutex for any access.
-		// This is optional to avoid potential performance loss in high-usage scenarios.
-		t.mutex.RLock()
-	}
-
-	result, _ := t.lookup(w, r)
-
-	if t.SafeAddRoutesWhileRunning {
-		t.mutex.RUnlock()
-	}
-
+	result, _ := t.Lookup(w, r)
 	t.ServeLookupResult(w, r, result)
 }
 
@@ -56,15 +45,15 @@ func (t *TreeMux[T]) ServeLookupResult(
 	r *http.Request,
 	lr LookupResult[T],
 ) {
-	if lr.redirectPath != "" {
-		redirect(w, r, lr.redirectPath, lr.StatusCode)
+	if lr.RedirectPath != "" {
+		redirect(w, r, lr.RedirectPath, lr.StatusCode)
 		return
 	}
 
 	r = t.setDefaultRequestContext(r)
 	if t.UseContextData {
 		r = AddContextData(r, &contextData{
-			route:  lr.routePath,
+			route:  lr.RoutePath,
 			params: lr.Params,
 		})
 	}
@@ -72,10 +61,10 @@ func (t *TreeMux[T]) ServeLookupResult(
 	if t.Bridge == nil {
 		panic("treemux: Bridge is not configured")
 	}
-	if t.Bridge.IsHandlerValid(lr.handler) {
-		t.Bridge.ToHTTPHandlerFunc(lr.handler, lr.Params)(w, r)
-	} else if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.registeredMethods) > 0 {
-		t.MethodNotAllowedHandler(w, r, lr.registeredMethods)
+	if t.Bridge.IsHandlerValid(lr.Handler) {
+		t.Bridge.ToHTTPHandlerFunc(lr.Handler, lr.Params)(w, r)
+	} else if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.RegisteredMethods) > 0 {
+		t.MethodNotAllowedHandler(w, r, lr.RegisteredMethods)
 	} else {
 		t.NotFoundHandler(w, r)
 	}
@@ -93,33 +82,33 @@ func (g *Group[T]) UseHandler(middleware func(http.Handler) http.Handler) {
 
 // HandlerFunc is a default handler type.
 // The parameter urlParams contains the params parsed from the request's URL.
-type HandlerFunc func(w http.ResponseWriter, r *http.Request, urlParams map[string]string)
+type HandlerFunc func(w http.ResponseWriter, r *http.Request, urlParams Params)
 
-type httpTreeMuxBridge struct{}
+type defaultBridge struct{}
 
-func (httpTreeMuxBridge) IsHandlerValid(handler HandlerFunc) bool {
+func (defaultBridge) IsHandlerValid(handler HandlerFunc) bool {
 	return handler != nil
 }
 
-func (httpTreeMuxBridge) ToHTTPHandlerFunc(handler HandlerFunc, params map[string]string) http.HandlerFunc {
+func (defaultBridge) ToHTTPHandlerFunc(handler HandlerFunc, params Params) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		handler(w, r, params)
 	}
 }
 
-type httpTreeMuxHandlerWithParams struct {
+type handlerWithParams struct {
 	handler HandlerFunc
-	params  map[string]string
+	params  Params
 }
 
-func (h httpTreeMuxHandlerWithParams) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h handlerWithParams) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.handler(w, r, h.params)
 }
 
-func (b httpTreeMuxBridge) ConvertMiddleware(middleware HTTPHandlerMiddleware) MiddlewareFunc[HandlerFunc] {
+func (b defaultBridge) ConvertMiddleware(middleware HTTPHandlerMiddleware) MiddlewareFunc[HandlerFunc] {
 	return func(next HandlerFunc) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, urlParams map[string]string) {
-			innerHandler := httpTreeMuxHandlerWithParams{next, urlParams}
+		return func(w http.ResponseWriter, r *http.Request, urlParams Params) {
+			innerHandler := handlerWithParams{next, urlParams}
 			middleware(innerHandler).ServeHTTP(w, r)
 		}
 	}
@@ -134,15 +123,15 @@ func (stdlibBridge) IsHandlerValid(handler HTTPHandlerFunc) bool {
 	return handler != nil
 }
 
-func (stdlibBridge) ToHTTPHandlerFunc(handler HTTPHandlerFunc, urlParams map[string]string) http.HandlerFunc {
+func (stdlibBridge) ToHTTPHandlerFunc(handler HTTPHandlerFunc, urlParams Params) http.HandlerFunc {
 	_ = urlParams
-	return http.HandlerFunc(handler)
+	return handler
 }
 
 func (stdlibBridge) ConvertMiddleware(middleware HTTPHandlerMiddleware) MiddlewareFunc[HTTPHandlerFunc] {
 	return func(next HTTPHandlerFunc) HTTPHandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			middleware(http.HandlerFunc(next)).ServeHTTP(w, r)
+			middleware(next).ServeHTTP(w, r)
 		}
 	}
 }
@@ -151,8 +140,22 @@ func setDefaultBridgeFunctions[T HandlerConstraint](r *TreeMux[T]) {
 	var x T
 	var typ = reflect.TypeOf(x)
 	if typ == reflect.TypeOf(HandlerFunc(nil)) {
-		r.Bridge = (interface{}(httpTreeMuxBridge{})).(Bridge[T])
+		r.Bridge = (interface{}(defaultBridge{})).(Bridge[T])
 	} else if typ == reflect.TypeOf(HTTPHandlerFunc(nil)) {
 		r.Bridge = (interface{}(stdlibBridge{})).(Bridge[T])
 	}
+}
+
+type UnimplementedBridge[T HandlerConstraint] struct{}
+
+func (UnimplementedBridge[T]) IsHandlerValid(handler T) bool {
+	panic("implement me")
+}
+
+func (UnimplementedBridge[T]) ToHTTPHandlerFunc(handler T, urlParams Params) http.HandlerFunc {
+	panic("implement me")
+}
+
+func (UnimplementedBridge[T]) ConvertMiddleware(middleware HTTPHandlerMiddleware) MiddlewareFunc[T] {
+	panic("implement me")
 }

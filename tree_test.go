@@ -2,18 +2,19 @@ package treemux
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
-func dummyHandler(w http.ResponseWriter, r *http.Request, urlParams map[string]string) {
+func dummyHandler(w http.ResponseWriter, r *http.Request, urlParams Params) {
 
 }
 
 func addPath(t *testing.T, tree *node[HandlerFunc], path string) {
 	t.Logf("Adding path %s", path)
 	n := tree.addPath(path[1:], nil, false)
-	var handler = func(w http.ResponseWriter, r *http.Request, urlParams map[string]string) {
-		urlParams["path"] = path
+	var handler = func(w http.ResponseWriter, r *http.Request, urlParams Params) {
+		w.Write([]byte(path))
 	}
 	n.setHandler("GET", handler, false)
 }
@@ -27,7 +28,7 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 	}
 
 	t.Log("Testing", path)
-	n, foundHandler, paramList := tree.search("GET", path[1:], httpTreeMuxBridge{}.IsHandlerValid)
+	n, foundHandler, paramList := tree.search("GET", path[1:], defaultBridge{}.IsHandlerValid)
 	if expectPath != "" && n == nil {
 		t.Errorf("No match for %s, expected %s", path, expectPath)
 		return
@@ -54,9 +55,9 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 		return
 	}
 
-	pathMap := make(map[string]string)
-	handler(nil, nil, pathMap)
-	matchedPath := pathMap["path"]
+	recorder := httptest.NewRecorder()
+	handler(recorder, nil, Params{})
+	matchedPath := recorder.Body.String()
 
 	if matchedPath != expectPath {
 		t.Errorf("Path %s matched %s, expected %s", path, matchedPath, expectPath)
@@ -238,7 +239,6 @@ func TestTree(t *testing.T) {
 	testPath(t, tree, "//post//abc//page//2", "", nil)
 
 	t.Log("Test retrieval of duplicate paths")
-	params := make(map[string]string)
 	p := "date/:year/:month/abc"
 	n := tree.addPath(p, nil, false)
 	if n == nil {
@@ -247,8 +247,9 @@ func TestTree(t *testing.T) {
 		handler, ok := n.leafHandlers["GET"]
 		matchPath := ""
 		if ok {
-			handler(nil, nil, params)
-			matchPath = params["path"]
+			recorder := httptest.NewRecorder()
+			handler(recorder, nil, Params{})
+			matchPath = recorder.Body.String()
 		}
 
 		if len(matchPath) < 2 || matchPath[1:] != p {
@@ -341,7 +342,7 @@ func BenchmarkTreeNullRequest(b *testing.B) {
 		},
 	}
 
-	validFunc := httpTreeMuxBridge{}.IsHandlerValid
+	validFunc := defaultBridge{}.IsHandlerValid
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -359,7 +360,7 @@ func BenchmarkTreeOneStatic(b *testing.B) {
 	}
 	tree.addPath("abc", nil, false)
 
-	validFunc := httpTreeMuxBridge{}.IsHandlerValid
+	validFunc := defaultBridge{}.IsHandlerValid
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -377,7 +378,7 @@ func BenchmarkTreeOneParam(b *testing.B) {
 	b.ReportAllocs()
 	tree.addPath(":abc", nil, false)
 
-	validFunc := httpTreeMuxBridge{}.IsHandlerValid
+	validFunc := defaultBridge{}.IsHandlerValid
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -395,7 +396,7 @@ func BenchmarkTreeLongParams(b *testing.B) {
 	b.ReportAllocs()
 	tree.addPath(":abc/:def/:ghi", nil, false)
 
-	validFunc := httpTreeMuxBridge{}.IsHandlerValid
+	validFunc := defaultBridge{}.IsHandlerValid
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

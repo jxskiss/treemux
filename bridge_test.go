@@ -21,17 +21,17 @@ func TestGroupUseHandler(t *testing.T) {
 	}
 
 	newHandler := func(name string) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		return func(w http.ResponseWriter, r *http.Request, params Params) {
 			record(name)
 		}
 	}
 
 	newParamsMiddleware := func(name string, paramKey string) MiddlewareFunc[HandlerFunc] {
 		return func(next HandlerFunc) HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+			return func(w http.ResponseWriter, r *http.Request, params Params) {
 				t.Log(params)
 				record(name)
-				record(params[paramKey])
+				record(params.Get(paramKey))
 				next(w, r, params)
 			}
 		}

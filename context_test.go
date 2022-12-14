@@ -11,7 +11,7 @@ import (
 func TestContextData(t *testing.T) {
 	p := &contextData{
 		route:  "route/path",
-		params: map[string]string{"id": "123"},
+		params: newParams("id", "123"),
 	}
 
 	ctx := addDataToContext(context.Background(), p)
@@ -23,26 +23,26 @@ func TestContextData(t *testing.T) {
 	}
 
 	params := ctxData.Params()
-	if v := params["id"]; v != "123" {
-		t.Errorf("expected '%s', but got '%#v'", p.params["id"], params["id"])
+	if v := params.Get("id"); v != "123" {
+		t.Errorf("expected '%s', but got '%#v'", p.params.Get("id"), v)
 	}
 }
 
 func TestContextDataParams(t *testing.T) {
 	m := &contextData{
-		params: map[string]string{"id": "123"},
+		params: newParams("id", "123"),
 		route:  "",
 	}
 
 	ctx := addDataToContext(context.Background(), m)
 
 	params := getDataFromContext(ctx).Params()
-	if params == nil {
+	if len(params.Keys) == 0 {
 		t.Errorf("expected '%#v', but got '%#v'", m, params)
 	}
 
-	if v := params["id"]; v != "123" {
-		t.Errorf("expected '%s', but got '%#v'", m.params["id"], params["id"])
+	if v := params.Get("id"); v != "123" {
+		t.Errorf("expected '%s', but got '%#v'", m.params.Get("id"), v)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestDefaultContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), "abc", "def")
 	expectContext := false
 
-	router.GET("/abc", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	router.GET("/abc", func(w http.ResponseWriter, r *http.Request, params Params) {
 		contextValue := r.Context().Value("abc")
 		if expectContext {
 			x, ok := contextValue.(string)
@@ -122,8 +122,9 @@ func TestDefaultContext(t *testing.T) {
 
 func TestAddContextData(t *testing.T) {
 	expectedRoute := "/expected/route"
-	expectedParams := map[string]string{
-		"test": "expected",
+	expectedParams := Params{
+		Keys:   []string{"test"},
+		Values: []string{"expected"},
 	}
 
 	ctx := addDataToContext(context.Background(), &contextData{
@@ -144,8 +145,9 @@ func TestAddContextData(t *testing.T) {
 }
 
 func TestAddParamsToContext(t *testing.T) {
-	expectedParams := map[string]string{
-		"test": "expected",
+	expectedParams := Params{
+		Keys:   []string{"test"},
+		Values: []string{"expected"},
 	}
 
 	ctx := AddParamsToContext(context.Background(), expectedParams)
@@ -175,11 +177,12 @@ func TestAddRouteToContext(t *testing.T) {
 
 func TestContextDataWithMiddleware(t *testing.T) {
 	wantRoute := "/foo/:id/bar"
-	wantParams := map[string]string{
-		"id": "15",
+	wantParams := Params{
+		Keys:   []string{"id"},
+		Values: []string{"15"},
 	}
 
-	validateRequestAndParams := func(request *http.Request, params map[string]string, location string) {
+	validateRequestAndParams := func(request *http.Request, params Params, location string) {
 		data := GetContextData(request)
 		if data == nil {
 			t.Fatalf("GetContextData returned nil in %s", location)
@@ -198,14 +201,14 @@ func TestContextDataWithMiddleware(t *testing.T) {
 	router := New[HandlerFunc]()
 	router.UseContextData = true
 	router.Use(func(next HandlerFunc) HandlerFunc {
-		return func(writer http.ResponseWriter, request *http.Request, m map[string]string) {
+		return func(writer http.ResponseWriter, request *http.Request, params Params) {
 			t.Log("Testing Middleware")
-			validateRequestAndParams(request, m, "middleware")
-			next(writer, request, m)
+			validateRequestAndParams(request, params, "middleware")
+			next(writer, request, params)
 		}
 	})
 
-	router.GET(wantRoute, tempToHandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	router.GET(wantRoute, toHandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		t.Log("Testing handler")
 		validateRequestAndParams(request, GetContextData(request).Params(), "handler")
 		writer.WriteHeader(http.StatusOK)
@@ -220,8 +223,8 @@ func TestContextDataWithMiddleware(t *testing.T) {
 	}
 }
 
-func tempToHandlerFunc(f http.HandlerFunc) func(http.ResponseWriter, *http.Request, map[string]string) {
-	return func(w http.ResponseWriter, r *http.Request, urlParams map[string]string) {
+func toHandlerFunc(f http.HandlerFunc) func(http.ResponseWriter, *http.Request, Params) {
+	return func(w http.ResponseWriter, r *http.Request, urlParams Params) {
 		_ = urlParams
 		f(w, r)
 	}

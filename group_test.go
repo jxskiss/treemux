@@ -14,13 +14,13 @@ func TestEmptyGroupAndMapping(t *testing.T) {
 			t.Error(`Expected NewGroup("")`)
 		}
 	}()
-	New[HandlerFunc]().GET("", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {})
+	New[HandlerFunc]().GET("", func(w http.ResponseWriter, _ *http.Request, _ Params) {})
 }
 
 func TestSubGroupSlashMapping(t *testing.T) {
 	r := New[HandlerFunc]()
 
-	r.NewGroup("/foo").GET("/", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	r.NewGroup("/foo").GET("/", func(w http.ResponseWriter, _ *http.Request, _ Params) {
 		w.WriteHeader(200)
 	})
 
@@ -44,7 +44,7 @@ func TestSubGroupSlashMapping(t *testing.T) {
 
 func TestSubGroupEmptyMapping(t *testing.T) {
 	r := New[HandlerFunc]()
-	r.NewGroup("/foo").GET("", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	r.NewGroup("/foo").GET("", func(w http.ResponseWriter, _ *http.Request, _ Params) {
 		w.WriteHeader(200)
 	})
 	req, _ := http.NewRequest("GET", "/foo", nil)
@@ -58,7 +58,7 @@ func TestSubGroupEmptyMapping(t *testing.T) {
 func TestGroupCaseInsensitiveRouting(t *testing.T) {
 	r := New[HandlerFunc]()
 	r.CaseInsensitive = true
-	r.NewGroup("/MY-path").GET("", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	r.NewGroup("/MY-path").GET("", func(w http.ResponseWriter, _ *http.Request, _ Params) {
 		w.WriteHeader(200)
 	})
 
@@ -109,7 +109,7 @@ func TestInvalidPath(t *testing.T) {
 func testGroupMethods(t *testing.T, reqGen RequestCreator, headCanUseGet bool) {
 	var result string
 	makeHandler := func(method string) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		return func(w http.ResponseWriter, r *http.Request, params Params) {
 			result = method
 		}
 	}
@@ -154,11 +154,11 @@ func testGroupMethods(t *testing.T, reqGen RequestCreator, headCanUseGet bool) {
 	testMethod("HEAD", "HEAD")
 }
 
-// Ensure that setting a GET handler doesn't overwrite an explciit HEAD handler.
+// Ensure that setting a GET handler doesn't overwrite an explicit HEAD handler.
 func TestSetGetAfterHead(t *testing.T) {
 	var result string
 	makeHandler := func(method string) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		return func(w http.ResponseWriter, r *http.Request, params Params) {
 			result = method
 		}
 	}
