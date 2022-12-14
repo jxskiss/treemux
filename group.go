@@ -140,7 +140,8 @@ func (g *Group[T]) addFullStackHandler(method string, path string, handler T) {
 		node.setHandler(method, handler, false)
 		node.fullPath = fullPath
 
-		if g.mux.HeadCanUseGet && method == "GET" && !node.leafHandlers["HEAD"].IsValid() {
+		headHandler := node.leafHandlers["HEAD"]
+		if g.mux.HeadCanUseGet && method == "GET" && !g.mux.Bridge.IsHandlerValid(headHandler) {
 			node.setHandler("HEAD", handler, true)
 		}
 	}

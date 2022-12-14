@@ -51,16 +51,9 @@ const (
 	URLPath                      // Use r.URL.Path
 )
 
-// HandlerConstraint is the type constraint for types that can be used as
-// routing target. Typically, users use a function (e.g. [http.HandlerFunc])
-// as routing target, but it's not required to be a function, any type
-// which satisfies HandlerConstraint is ok.
-type HandlerConstraint interface {
-
-	// IsValid tells whether the Handler is valid, a valid Handler which
-	// matches the request stops searching the routing rules.
-	IsValid() bool
-}
+// HandlerConstraint is the type constraint for a handler,
+// Any type can be used as a handler target.
+type HandlerConstraint = any
 
 // LookupResult contains information about a route lookup, which is returned from Lookup and
 // can be passed to [TreeMux.ServeLookupResult] if the request should be served.
@@ -92,9 +85,7 @@ type TreeMux[T HandlerConstraint] struct {
 
 	Group[T]
 
-	// Optional bridge to work with [http.Handler] and [http.HandlerFunc].
-	// This is unnecessary when you don't use http.HandlerFunc and http.Handler
-	// based middlewares.
+	// Bridge connects TreeMux to user defined handler type T.
 	Bridge Bridge[T]
 
 	// The default PanicHandler just returns a 500 code.
@@ -248,13 +239,15 @@ func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result Lo
 		unescapedPath = unescapedPath[:len(unescapedPath)-1]
 	}
 
-	n, handler, params := t.root.search(method, path[1:])
+	isValid := t.Bridge.IsHandlerValid
+
+	n, handler, params := t.root.search(method, path[1:], isValid)
 	if n == nil {
 		if t.RedirectCleanPath {
 			// Path was not found. Try cleaning it up and search again.
 			// TODO Test this
 			cleanPath := Clean(unescapedPath)
-			n, handler, params = t.root.search(method, cleanPath[1:])
+			n, handler, params = t.root.search(method, cleanPath[1:], isValid)
 			if n == nil {
 				// Still nothing found.
 				return
@@ -273,12 +266,12 @@ func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result Lo
 		}
 	}
 
-	if !handler.IsValid() {
-		if method == "OPTIONS" && t.OptionsHandler.IsValid() {
+	if !isValid(handler) {
+		if method == "OPTIONS" && isValid(t.OptionsHandler) {
 			handler = t.OptionsHandler
 		}
 
-		if !handler.IsValid() {
+		if !isValid(handler) {
 			result.StatusCode = http.StatusMethodNotAllowed
 			result.routePath = n.fullPath
 			result.registeredMethods = getSortedKeys(n.leafHandlers)

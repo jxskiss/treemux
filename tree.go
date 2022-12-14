@@ -246,7 +246,7 @@ func (n *node[T]) splitCommonPrefix(existingNodeIndex int, path string) (*node[T
 	return newNode, i
 }
 
-func (n *node[T]) search(method, path string) (found *node[T], handler T, params []string) {
+func (n *node[T]) search(method, path string, isValid func(T) bool) (found *node[T], handler T, params []string) {
 	// if test != nil {
 	// 	test.Logf("Searching for %s in %s", path, n.dumpTree("", ""))
 	// }
@@ -267,7 +267,7 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 			childPathLen := len(child.path)
 			if pathLen >= childPathLen && child.path == path[:childPathLen] {
 				nextPath := path[childPathLen:]
-				found, handler, params = child.search(method, nextPath)
+				found, handler, params = child.search(method, nextPath, isValid)
 			}
 			break
 		}
@@ -275,7 +275,7 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 
 	// If we found a node which has a valid handler, then return here.
 	// Otherwise, let's remember that we found this one, but look for a better match.
-	if handler.IsValid() {
+	if isValid(handler) {
 		return
 	}
 
@@ -290,8 +290,8 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 		nextToken := path[nextSlash:]
 
 		if len(thisToken) > 0 { // Don't match on empty tokens.
-			wcNode, wcHandler, wcParams := n.wildcardChild.search(method, nextToken)
-			if wcHandler.IsValid() || (found == nil && wcNode != nil) {
+			wcNode, wcHandler, wcParams := n.wildcardChild.search(method, nextToken, isValid)
+			if valid := isValid(wcHandler); valid || (found == nil && wcNode != nil) {
 				unescaped, err := unescape(thisToken)
 				if err != nil {
 					unescaped = thisToken
@@ -299,7 +299,7 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 
 				wcParams = append(wcParams, unescaped)
 
-				if wcHandler.IsValid() {
+				if valid {
 					return wcNode, wcHandler, wcParams
 				}
 
@@ -312,9 +312,9 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 	}
 
 	if len(n.regexChild) > 0 {
-		reNode, reHandler, reParams := n.searchRegexChild(method, path)
-		if reHandler.IsValid() || (found == nil && reNode != nil) {
-			if reHandler.IsValid() {
+		reNode, reHandler, reParams := n.searchRegexChild(method, path, isValid)
+		if valid := isValid(reHandler); valid || (found == nil && reNode != nil) {
+			if valid {
 				return reNode, reHandler, reParams
 			}
 
@@ -330,7 +330,7 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 		handler = catchAllChild.leafHandlers[method]
 		// Found a handler, or we found a catchall node without a handler.
 		// Either way, return it since there's nothing left to check after this.
-		if handler.IsValid() || found == nil {
+		if isValid(handler) || found == nil {
 			unescaped, err := unescape(path)
 			if err != nil {
 				unescaped = path
@@ -344,7 +344,7 @@ func (n *node[T]) search(method, path string) (found *node[T], handler T, params
 }
 
 // searchRegexChild search a node's regex children in their registering order.
-func (n *node[T]) searchRegexChild(method, path string) (found *node[T], handler T, params []string) {
+func (n *node[T]) searchRegexChild(method, path string, isValid func(T) bool) (found *node[T], handler T, params []string) {
 	for _, child := range n.regexChild {
 		re := child.regExpr
 		match := re.FindStringSubmatch(path)
@@ -362,7 +362,7 @@ func (n *node[T]) searchRegexChild(method, path string) (found *node[T], handler
 			}
 		}
 
-		if handler.IsValid() {
+		if isValid(handler) {
 			return
 		}
 

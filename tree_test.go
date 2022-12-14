@@ -27,7 +27,7 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 	}
 
 	t.Log("Testing", path)
-	n, foundHandler, paramList := tree.search("GET", path[1:])
+	n, foundHandler, paramList := tree.search("GET", path[1:], httpTreeMuxBridge{}.IsHandlerValid)
 	if expectPath != "" && n == nil {
 		t.Errorf("No match for %s, expected %s", path, expectPath)
 		return
@@ -341,9 +341,11 @@ func BenchmarkTreeNullRequest(b *testing.B) {
 		},
 	}
 
+	validFunc := httpTreeMuxBridge{}.IsHandlerValid
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tree.search("GET", "")
+		tree.search("GET", "", validFunc)
 	}
 }
 
@@ -357,9 +359,11 @@ func BenchmarkTreeOneStatic(b *testing.B) {
 	}
 	tree.addPath("abc", nil, false)
 
+	validFunc := httpTreeMuxBridge{}.IsHandlerValid
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tree.search("GET", "abc")
+		tree.search("GET", "abc", validFunc)
 	}
 }
 
@@ -373,9 +377,11 @@ func BenchmarkTreeOneParam(b *testing.B) {
 	b.ReportAllocs()
 	tree.addPath(":abc", nil, false)
 
+	validFunc := httpTreeMuxBridge{}.IsHandlerValid
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tree.search("GET", "abc")
+		tree.search("GET", "abc", validFunc)
 	}
 }
 
@@ -389,8 +395,10 @@ func BenchmarkTreeLongParams(b *testing.B) {
 	b.ReportAllocs()
 	tree.addPath(":abc/:def/:ghi", nil, false)
 
+	validFunc := httpTreeMuxBridge{}.IsHandlerValid
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tree.search("GET", "abcdefghijklmnop/aaaabbbbccccddddeeeeffffgggg/hijkl")
+		tree.search("GET", "abcdefghijklmnop/aaaabbbbccccddddeeeeffffgggg/hijkl", validFunc)
 	}
 }

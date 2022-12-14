@@ -5,18 +5,26 @@ import (
 	"reflect"
 )
 
-// HTTPHandlerMiddleware is a short name for [http.Handler] middleware
+// HTTPHandlerMiddleware is an alias name for [http.Handler] middleware
 // `func(http.Handler) http.Handler`.
-type HTTPHandlerMiddleware func(http.Handler) http.Handler
+type HTTPHandlerMiddleware = func(http.Handler) http.Handler
 
 // Bridge is a bridge which helps TreeMux with user defined handlers
 // to work together with [http.Handler] and [http.HandlerFunc] in stdlib.
 type Bridge[T HandlerConstraint] interface {
 
+	// IsHandlerValid tells whether the Handler is valid, a valid Handler
+	// which matches the request stops the router searching the routing rules.
+	IsHandlerValid(handler T) bool
+
 	// ToHTTPHandlerFunc convert a handler T and params to [http.HandlerFunc].
+	//
+	// This method is unnecessary when you don't use http.Handler features.
 	ToHTTPHandlerFunc(handler T, urlParams map[string]string) http.HandlerFunc
 
 	// ConvertMiddleware converts a HTTPHandlerMiddleware to MiddlewareFunc[T].
+	//
+	// This method is unnecessary when you don't use and http.Handler based middlewares.
 	ConvertMiddleware(middleware HTTPHandlerMiddleware) MiddlewareFunc[T]
 }
 
@@ -61,10 +69,10 @@ func (t *TreeMux[T]) ServeLookupResult(
 		})
 	}
 
-	if lr.handler.IsValid() {
-		if t.Bridge == nil {
-			panic("treemux: Bridge is not configured")
-		}
+	if t.Bridge == nil {
+		panic("treemux: Bridge is not configured")
+	}
+	if t.Bridge.IsHandlerValid(lr.handler) {
 		t.Bridge.ToHTTPHandlerFunc(lr.handler, lr.Params)(w, r)
 	} else if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.registeredMethods) > 0 {
 		t.MethodNotAllowedHandler(w, r, lr.registeredMethods)
@@ -83,13 +91,15 @@ func (g *Group[T]) UseHandler(middleware func(http.Handler) http.Handler) {
 	g.stack = append(g.stack, g.mux.Bridge.ConvertMiddleware(middleware))
 }
 
-// HandlerFunc is a default handler type which satisfies the HandlerConstraint.
+// HandlerFunc is a default handler type.
 // The parameter urlParams contains the params parsed from the request's URL.
 type HandlerFunc func(w http.ResponseWriter, r *http.Request, urlParams map[string]string)
 
-func (p HandlerFunc) IsValid() bool { return p != nil }
-
 type httpTreeMuxBridge struct{}
+
+func (httpTreeMuxBridge) IsHandlerValid(handler HandlerFunc) bool {
+	return handler != nil
+}
 
 func (httpTreeMuxBridge) ToHTTPHandlerFunc(handler HandlerFunc, params map[string]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -115,13 +125,14 @@ func (b httpTreeMuxBridge) ConvertMiddleware(middleware HTTPHandlerMiddleware) M
 	}
 }
 
-// HTTPHandlerFunc equals http.HandlerFunc.
-// It satisfies HandlerConstraint, thus it can be used with TreeMux.
-type HTTPHandlerFunc func(w http.ResponseWriter, r *http.Request)
-
-func (p HTTPHandlerFunc) IsValid() bool { return p != nil }
+// HTTPHandlerFunc is an alias type of [http.HandlerFunc].
+type HTTPHandlerFunc = http.HandlerFunc
 
 type stdlibBridge struct{}
+
+func (stdlibBridge) IsHandlerValid(handler HTTPHandlerFunc) bool {
+	return handler != nil
+}
 
 func (stdlibBridge) ToHTTPHandlerFunc(handler HTTPHandlerFunc, urlParams map[string]string) http.HandlerFunc {
 	_ = urlParams
