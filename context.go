@@ -7,18 +7,19 @@ import (
 
 type contextData struct {
 	route  string
-	params map[string]string
+	params Params
 }
 
 func (cd *contextData) Route() string {
 	return cd.route
 }
 
-func (cd *contextData) Params() map[string]string {
-	if cd.params != nil {
-		return cd.params
-	}
-	return map[string]string{}
+func (cd *contextData) Param(name string) string {
+	return cd.params.Get(name)
+}
+
+func (cd *contextData) Params() Params {
+	return cd.params
 }
 
 // ContextData is the information associated with the matched path.
@@ -27,8 +28,11 @@ type ContextData interface {
 	// Route returns the matched route, without expanded params.
 	Route() string
 
+	// Param returns the param value by name.
+	Param(name string) string
+
 	// Params returns the matched params.
-	Params() map[string]string
+	Params() Params
 }
 
 // GetContextData returns the ContextData associated with the request.
@@ -57,7 +61,7 @@ func addDataToContext(ctx context.Context, data ContextData) context.Context {
 
 // AddParamsToContext helps to do testing.
 // It inserts given params into a context using the package's internal context key.
-func AddParamsToContext(ctx context.Context, params map[string]string) context.Context {
+func AddParamsToContext(ctx context.Context, params Params) context.Context {
 	return addDataToContext(ctx, &contextData{
 		params: params,
 	})

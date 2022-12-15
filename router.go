@@ -62,18 +62,24 @@ type LookupResult[T HandlerConstraint] struct {
 	// This will generally be `http.StatusNotFound` or `http.StatusMethodNotAllowed`
 	// for an error case.
 	// On a normal success, the StatusCode will be `http.StatusOK`.
-	// A redirect code will also be used in case that redirectPath is not empty.
+	// A redirect code will also be used in case that RedirectPath is not empty.
 	StatusCode int
 
 	// Params represents the key value pairs of the path parameters.
-	Params map[string]string
+	Params Params
 
-	// Non-empty redirectPath indicates that the request should be redirected.
-	redirectPath string
+	// Non-empty RedirectPath indicates that the request should be redirected.
+	RedirectPath string
 
-	handler           T
-	routePath         string
-	registeredMethods []string // Only has a value when StatusCode is MethodNotAllowed.
+	// Handler is the result handler if it's found.
+	Handler T
+
+	// RoutePath is the route path registered with the result handler.
+	RoutePath string
+
+	// When StatusCode is MethodNotAllowed, RegisteredMethods contains the
+	// methods registered for the request path, else it is nil.
+	RegisteredMethods []string
 }
 
 // TreeMux is a generic HTTP request router.
@@ -209,13 +215,11 @@ func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result Look
 		if rawQueryLen != 0 || path[pathLen-1] == '?' {
 			// Remove any query string and the ?.
 			path = path[:pathLen-rawQueryLen-1]
-			pathLen = len(path)
 		}
 	} else {
 		// In testing with http.NewRequest,
 		// RequestURI is not set so just grab URL.Path instead.
 		path = r.URL.Path
-		pathLen = len(path)
 	}
 
 	unescapedPath := r.URL.Path
@@ -255,8 +259,8 @@ func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result Lo
 			if statusCode, ok := t.redirectStatusCode(method); ok {
 				// Redirect to the actual path
 				result.StatusCode = statusCode
-				result.redirectPath = cleanPath
-				result.routePath = n.fullPath
+				result.RedirectPath = cleanPath
+				result.RoutePath = n.fullPath
 				found = true
 				return
 			}
@@ -273,8 +277,8 @@ func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result Lo
 
 		if !isValid(handler) {
 			result.StatusCode = http.StatusMethodNotAllowed
-			result.routePath = n.fullPath
-			result.registeredMethods = getSortedKeys(n.leafHandlers)
+			result.RoutePath = n.fullPath
+			result.RegisteredMethods = getSortedKeys(n.leafHandlers)
 			return
 		}
 	}
@@ -284,14 +288,14 @@ func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result Lo
 			if statusCode, ok := t.redirectStatusCode(method); ok {
 				if n.addSlash {
 					result.StatusCode = statusCode
-					result.redirectPath = unescapedPath + "/"
-					result.routePath = n.fullPath
+					result.RedirectPath = unescapedPath + "/"
+					result.RoutePath = n.fullPath
 				} else if path != "/" {
 					result.StatusCode = statusCode
-					result.redirectPath = unescapedPath
-					result.routePath = n.fullPath
+					result.RedirectPath = unescapedPath
+					result.RoutePath = n.fullPath
 				}
-				if result.redirectPath != "" {
+				if result.RedirectPath != "" {
 					found = true
 					return
 				}
@@ -299,7 +303,7 @@ func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result Lo
 		}
 	}
 
-	var paramMap map[string]string
+	var retParams Params
 	if num := len(params); num > 0 {
 		if num != len(n.leafParamNames) {
 			// Need better behavior here. Should this be a panic?
@@ -307,17 +311,16 @@ func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result Lo
 				params, n.leafParamNames))
 		}
 
-		paramMap = make(map[string]string, num)
-		for i := 0; i < num; i++ {
-			paramMap[n.leafParamNames[num-i-1]] = params[i]
-		}
+		reverseSlice(params)
+		retParams.Keys = n.leafParamNames
+		retParams.Values = params
 	}
 
 	result = LookupResult[T]{
 		StatusCode: http.StatusOK,
-		Params:     paramMap,
-		routePath:  n.fullPath,
-		handler:    handler,
+		Params:     retParams,
+		RoutePath:  n.fullPath,
+		Handler:    handler,
 	}
 	found = true
 	return

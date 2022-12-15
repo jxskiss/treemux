@@ -14,9 +14,9 @@ import (
 	"testing"
 )
 
-func simpleHandler(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+func simpleHandler(w http.ResponseWriter, r *http.Request, params Params) {}
 
-func panicHandler(w http.ResponseWriter, r *http.Request, params map[string]string) {
+func panicHandler(w http.ResponseWriter, r *http.Request, params Params) {
 	panic("test panic")
 }
 
@@ -100,7 +100,7 @@ func testMethods(t *testing.T, newRequest RequestCreator, headCanUseGet bool, us
 	var result string
 
 	makeHandler := func(method string) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		return func(w http.ResponseWriter, r *http.Request, params Params) {
 			result = method
 		}
 	}
@@ -243,12 +243,12 @@ func TestMethodNotAllowedHandler(t *testing.T) {
 }
 
 func TestOptionsHandler(t *testing.T) {
-	optionsHandler := func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	optionsHandler := func(w http.ResponseWriter, r *http.Request, pathparams Params) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(http.StatusNoContent)
 	}
 
-	customOptionsHandler := func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	customOptionsHandler := func(w http.ResponseWriter, r *http.Request, pathparams Params) {
 		w.Header().Set("Access-Control-Allow-Origin", "httptreemux.com")
 		w.WriteHeader(http.StatusUnauthorized)
 	}
@@ -385,7 +385,7 @@ func behaviorToCode(b RedirectBehavior) int {
 func testRedirect(t *testing.T, defaultBehavior, getBehavior, postBehavior RedirectBehavior, customMethods bool,
 	newRequest RequestCreator, serveStyle bool) {
 
-	var redirHandler = func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	var redirHandler = func(w http.ResponseWriter, r *http.Request, params Params) {
 		// Returning this instead of 200 makes it easy to verify that the handler is actually getting called.
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -601,7 +601,7 @@ func TestRoot(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Log(scenario.description)
 		handlerCalled := false
-		handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		handler := func(w http.ResponseWriter, r *http.Request, params Params) {
 			handlerCalled = true
 		}
 		router := New[HandlerFunc]()
@@ -619,9 +619,9 @@ func TestRoot(t *testing.T) {
 
 func TestWildcardAtSplitNode(t *testing.T) {
 	var suppliedParam string
-	simpleHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	simpleHandler := func(w http.ResponseWriter, r *http.Request, params Params) {
 		t.Log(params)
-		suppliedParam, _ = params["slug"]
+		suppliedParam = params.Get("slug")
 	}
 
 	router := New[HandlerFunc]()
@@ -668,11 +668,11 @@ func TestWildcardAtSplitNode(t *testing.T) {
 
 func TestSlash(t *testing.T) {
 	param := ""
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
-		param = params["param"]
+	handler := func(w http.ResponseWriter, r *http.Request, params Params) {
+		param = params.Get("param")
 	}
-	ymHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
-		param = params["year"] + " " + params["month"]
+	ymHandler := func(w http.ResponseWriter, r *http.Request, params Params) {
+		param = params.Get("year") + " " + params.Get("month")
 	}
 	router := New[HandlerFunc]()
 	router.GET("/abc/:param", handler)
@@ -698,8 +698,8 @@ func TestQueryString(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Log(scenario.description)
 		param := ""
-		handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
-			param = params["param"]
+		handler := func(w http.ResponseWriter, r *http.Request, params Params) {
+			param = params.Get("param")
 		}
 		router := New[HandlerFunc]()
 		router.GET("/static", handler)
@@ -732,11 +732,11 @@ func TestQueryString(t *testing.T) {
 func TestPathSource(t *testing.T) {
 	var called string
 
-	appleHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	appleHandler := func(w http.ResponseWriter, r *http.Request, params Params) {
 		called = "apples"
 	}
 
-	bananaHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	bananaHandler := func(w http.ResponseWriter, r *http.Request, params Params) {
 		called = "bananas"
 	}
 	router := New[HandlerFunc]()
@@ -794,13 +794,13 @@ func TestEscapedRoutes(t *testing.T) {
 		var foundParamKey string
 		var foundParamValue string
 
-		handleTestResponse := func(c *testcase, w http.ResponseWriter, r *http.Request, params map[string]string) {
+		handleTestResponse := func(c *testcase, w http.ResponseWriter, r *http.Request, params Params) {
 			foundTestCase = c
 			foundParamKey = ""
 			foundParamValue = ""
-			for key, val := range params {
+			for i, key := range params.Keys {
 				foundParamKey = key
-				foundParamValue = val
+				foundParamValue = params.Values[i]
 			}
 			t.Logf("RequestURI %s found test case %+v", r.RequestURI, c)
 		}
@@ -827,7 +827,7 @@ func TestEscapedRoutes(t *testing.T) {
 		for _, c := range testcases {
 			t.Logf("Adding route %s", c.Route)
 			theCase := c
-			router.GET(c.Route, func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+			router.GET(c.Route, func(w http.ResponseWriter, r *http.Request, params Params) {
 				handleTestResponse(theCase, w, r, params)
 			})
 		}
@@ -1062,7 +1062,7 @@ func TestLookup(t *testing.T) {
 func TestRedirectEscapedPath(t *testing.T) {
 	router := New[HandlerFunc]()
 
-	testHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	testHandler := func(w http.ResponseWriter, r *http.Request, params Params) {}
 
 	router.GET("/:escaped/", testHandler)
 
@@ -1103,14 +1103,14 @@ func TestMiddleware(t *testing.T) {
 	}
 
 	newHandler := func(name string) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		return func(w http.ResponseWriter, r *http.Request, params Params) {
 			record(name)
 		}
 	}
 
 	newMiddleware := func(name string) MiddlewareFunc[HandlerFunc] {
 		return func(next HandlerFunc) HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+			return func(w http.ResponseWriter, r *http.Request, params Params) {
 				record(name)
 				next(w, r, params)
 			}
@@ -1119,10 +1119,10 @@ func TestMiddleware(t *testing.T) {
 
 	newParamsMiddleware := func(name string, paramKey string) MiddlewareFunc[HandlerFunc] {
 		return func(next HandlerFunc) HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+			return func(w http.ResponseWriter, r *http.Request, params Params) {
 				t.Log(params)
 				record(name)
-				record(params[paramKey])
+				record(params.Get(paramKey))
 				next(w, r, params)
 			}
 		}
@@ -1178,19 +1178,16 @@ func TestMiddleware(t *testing.T) {
 		execLog = nil
 		g := router.NewGroup("/g2")
 		g.Use(func(next HandlerFunc) HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+			return func(w http.ResponseWriter, r *http.Request, params Params) {
 				record("m4")
-				if params == nil {
-					params = make(map[string]string)
-				}
-				params["foo"] = "bar"
+				params.Append("foo", "bar")
 				next(w, r, params)
 			}
 		})
-		g.GET("/h6", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		g.GET("/h6", func(w http.ResponseWriter, r *http.Request, params Params) {
 			record("h6")
-			if params["foo"] != "bar" {
-				t.Fatalf("got %q, wanted %q", params["foo"], "bar")
+			if v := params.Get("foo"); v != "bar" {
+				t.Fatalf("got %q, wanted %q", v, "bar")
 			}
 		})
 
@@ -1204,7 +1201,7 @@ func TestMiddleware(t *testing.T) {
 	{
 		execLog = nil
 		router.Use(func(_ HandlerFunc) HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+			return func(w http.ResponseWriter, r *http.Request, params Params) {
 				record("m3")
 				w.WriteHeader(http.StatusBadRequest)
 				w.Write([]byte("pong"))
