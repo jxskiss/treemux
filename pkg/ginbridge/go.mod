@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/gin-gonic/gin v1.8.1
-	github.com/jxskiss/treemux v0.2.0
+	github.com/jxskiss/treemux v0.2.1
 )
 
 require (

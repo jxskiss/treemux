@@ -70,12 +70,11 @@ func (*HertzBridge) WrapMiddleware(mw app.HandlerFunc) treemux.MiddlewareFunc[*H
 
 func (b *HertzBridge) Serve(ctx context.Context, rc *app.RequestContext) {
 	method := string(rc.Method())
-	path := string(rc.Path())
 	requestURI := string(rc.Request.RequestURI())
+	urlPath := string(rc.URI().Path())
 
-	mux := (*treemux.TreeMux[*HertzHandler])(atomic.LoadPointer(&b.mux))
-
-	lr, _ := mux.LookupByPath(method, path, requestURI)
+	mux := b.getMux()
+	lr, _ := mux.LookupByPath(method, requestURI, urlPath)
 
 	if lr.RedirectPath != "" {
 		rc.Redirect(lr.StatusCode, []byte(lr.RedirectPath))
