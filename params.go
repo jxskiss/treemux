@@ -10,7 +10,7 @@ type Params struct {
 
 // Get returns the value of the param which matches name.
 // If no matching pram is found, an empty string is returned.
-func (ps *Params) Get(name string) string {
+func (ps Params) Get(name string) string {
 	for i, key := range ps.Keys {
 		if key == name {
 			return ps.Values[i]
@@ -23,4 +23,13 @@ func (ps *Params) Get(name string) string {
 func (ps *Params) Append(key, value string) {
 	ps.Keys = append(ps.Keys, key)
 	ps.Values = append(ps.Values, value)
+}
+
+// ToMap converts Params to a map which contains all path parameters.
+func (ps Params) ToMap() map[string]string {
+	out := make(map[string]string, len(ps.Keys))
+	for i, key := range ps.Keys {
+		out[key] = ps.Values[i]
+	}
+	return out
 }

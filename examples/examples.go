@@ -7,8 +7,8 @@ type Route struct {
 	Path   string
 }
 
-func SetupRoutes[T any](r *treemux.TreeMux[T], handler T) {
+func SetupRoutes[T any](r *treemux.TreeMux[T], handlerFactory func() T) {
 	for _, x := range GithubAPIList {
-		r.Handle(x.Method, x.Path, handler)
+		r.Handle(x.Method, x.Path, handlerFactory())
 	}
 }
