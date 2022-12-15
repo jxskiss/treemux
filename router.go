@@ -208,30 +208,31 @@ func (t *TreeMux[_]) redirectStatusCode(method string) (int, bool) {
 }
 
 func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result LookupResult[T], found bool) {
-	path := r.RequestURI
+	method := r.Method
+	requestURI := r.RequestURI
+	urlPath := r.URL.Path
+	return t.lookupByPath(method, requestURI, urlPath)
+}
+
+func (t *TreeMux[T]) lookupByPath(method, requestURI, urlPath string) (result LookupResult[T], found bool) {
+
+	result.StatusCode = http.StatusNotFound
+
+	path := requestURI
 	pathLen := len(path)
 	if pathLen > 0 && t.PathSource == RequestURI {
-		rawQueryLen := len(r.URL.RawQuery)
-		if rawQueryLen != 0 || path[pathLen-1] == '?' {
-			// Remove any query string and the ?.
-			path = path[:pathLen-rawQueryLen-1]
+		// Remove any query string.
+		queryIdx := strings.IndexByte(path, '?')
+		if queryIdx >= 0 {
+			path = path[:queryIdx]
 		}
 	} else {
 		// In testing with http.NewRequest,
 		// RequestURI is not set so just grab URL.Path instead.
-		path = r.URL.Path
+		path = urlPath
 	}
-
-	unescapedPath := r.URL.Path
-
-	return t.lookupByPath(r.Method, path, unescapedPath)
-}
-
-func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result LookupResult[T], found bool) {
-
-	result.StatusCode = http.StatusNotFound
-
-	pathLen := len(path)
+	pathLen = len(path)
+	unescapedPath := urlPath
 	if t.CaseInsensitive {
 		path = strings.ToLower(path)
 		unescapedPath = strings.ToLower(unescapedPath)
@@ -341,12 +342,12 @@ func (t *TreeMux[T]) Lookup(w http.ResponseWriter, r *http.Request) (LookupResul
 	return t.lookup(w, r)
 }
 
-func (t *TreeMux[T]) LookupByPath(method, path, unescapedPath string) (LookupResult[T], bool) {
+func (t *TreeMux[T]) LookupByPath(method, requestURI, urlPath string) (LookupResult[T], bool) {
 	if t.SafeAddRoutesWhileRunning {
 		t.mutex.RLock()
 		defer t.mutex.RUnlock()
 	}
-	return t.lookupByPath(method, path, unescapedPath)
+	return t.lookupByPath(method, requestURI, urlPath)
 }
 
 // defaultMethodNotAllowedHandler is the default handler for TreeMux.MethodNotAllowedHandler,
@@ -360,6 +361,7 @@ func defaultMethodNotAllowedHandler(
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
+// New creates a new TreeMux[T].
 func New[T HandlerConstraint]() *TreeMux[T] {
 	tm := &TreeMux[T]{
 		root:                    &node[T]{path: "/"},
