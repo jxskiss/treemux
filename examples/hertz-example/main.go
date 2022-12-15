@@ -123,8 +123,8 @@ func (b hertzBridge) Dispatch(ctx context.Context, rc *app.RequestContext) {
 		return
 	}
 
-	if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.RegisteredMethods) > 0 {
-		for _, m := range lr.RegisteredMethods {
+	if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.AllowedMethods) > 0 {
+		for _, m := range lr.AllowedMethods {
 			rc.Response.Header.Add("Allow", m)
 		}
 		rc.AbortWithStatus(http.StatusMethodNotAllowed)

@@ -197,15 +197,15 @@ func TestMethodNotAllowedHandler(t *testing.T) {
 	calledNotAllowed := false
 
 	notAllowedHandler := func(w http.ResponseWriter, r *http.Request,
-		registeredMethods []string) {
+		allowedMethods []string) {
 
 		expected := []string{"DELETE", "GET", "HEAD", "PUT"}
 
 		calledNotAllowed = true
 
-		if !reflect.DeepEqual(expected, registeredMethods) {
+		if !reflect.DeepEqual(expected, allowedMethods) {
 			t.Errorf("Custom handler expected map %v, saw %v",
-				expected, registeredMethods)
+				expected, allowedMethods)
 		}
 	}
 

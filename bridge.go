@@ -63,8 +63,8 @@ func (t *TreeMux[T]) ServeLookupResult(
 	}
 	if t.Bridge.IsHandlerValid(lr.Handler) {
 		t.Bridge.ToHTTPHandlerFunc(lr.Handler, lr.Params)(w, r)
-	} else if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.RegisteredMethods) > 0 {
-		t.MethodNotAllowedHandler(w, r, lr.RegisteredMethods)
+	} else if lr.StatusCode == http.StatusMethodNotAllowed && len(lr.AllowedMethods) > 0 {
+		t.MethodNotAllowedHandler(w, r, lr.AllowedMethods)
 	} else {
 		t.NotFoundHandler(w, r)
 	}

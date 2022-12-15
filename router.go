@@ -16,7 +16,7 @@ import (
 
 type PanicHandler func(http.ResponseWriter, *http.Request, interface{})
 
-type MethodNotAllowedHandler func(w http.ResponseWriter, r *http.Request, registeredMethods []string)
+type MethodNotAllowedHandler func(w http.ResponseWriter, r *http.Request, allowedMethods []string)
 
 // RedirectBehavior sets the behavior when the router redirects the request to the
 // canonical version of the requested URL using RedirectTrailingSlash or RedirectClean.
@@ -65,21 +65,21 @@ type LookupResult[T HandlerConstraint] struct {
 	// A redirect code will also be used in case that RedirectPath is not empty.
 	StatusCode int
 
-	// Params represents the key value pairs of the path parameters.
-	Params Params
-
 	// Non-empty RedirectPath indicates that the request should be redirected.
 	RedirectPath string
+
+	// When StatusCode is MethodNotAllowed, AllowedMethods contains the
+	// methods registered for the request path, else it is nil.
+	AllowedMethods []string
+
+	// Params represents the key value pairs of the path parameters.
+	Params Params
 
 	// Handler is the result handler if it's found.
 	Handler T
 
 	// RoutePath is the route path registered with the result handler.
 	RoutePath string
-
-	// When StatusCode is MethodNotAllowed, RegisteredMethods contains the
-	// methods registered for the request path, else it is nil.
-	RegisteredMethods []string
 }
 
 // TreeMux is a generic HTTP request router.
@@ -278,7 +278,7 @@ func (t *TreeMux[T]) lookupByPath(method, path, unescapedPath string) (result Lo
 		if !isValid(handler) {
 			result.StatusCode = http.StatusMethodNotAllowed
 			result.RoutePath = n.fullPath
-			result.RegisteredMethods = getSortedKeys(n.leafHandlers)
+			result.AllowedMethods = getSortedKeys(n.leafHandlers)
 			return
 		}
 	}
@@ -354,9 +354,9 @@ func (t *TreeMux[T]) LookupByPath(method, path, unescapedPath string) (LookupRes
 // requested method. It simply writes the status code http.StatusMethodNotAllowed and fills
 // in the `Allow` header value appropriately.
 func defaultMethodNotAllowedHandler(
-	w http.ResponseWriter, r *http.Request, registeredMethods []string) {
+	w http.ResponseWriter, _ *http.Request, allowedMethods []string) {
 
-	w.Header()["Allow"] = registeredMethods
+	w.Header()["Allow"] = allowedMethods
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
