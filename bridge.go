@@ -19,12 +19,12 @@ type Bridge[T HandlerConstraint] interface {
 
 	// ToHTTPHandlerFunc convert a handler T and params to [http.HandlerFunc].
 	//
-	// This method is unnecessary when you don't use http.Handler features.
+	// This method is not required when you don't use http.Handler features.
 	ToHTTPHandlerFunc(handler T, urlParams Params) http.HandlerFunc
 
 	// ConvertMiddleware converts a HTTPHandlerMiddleware to MiddlewareFunc[T].
 	//
-	// This method is unnecessary when you don't use and http.Handler based middlewares.
+	// This method is not required when you don't use http.Handler based middlewares.
 	ConvertMiddleware(middleware HTTPHandlerMiddleware) MiddlewareFunc[T]
 }
 

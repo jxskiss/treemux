@@ -52,7 +52,7 @@ const (
 )
 
 // HandlerConstraint is the type constraint for a handler,
-// Any type can be used as a handler target.
+// any type can be used as a handler target.
 type HandlerConstraint = any
 
 // LookupResult contains information about a route lookup, which is returned from Lookup and

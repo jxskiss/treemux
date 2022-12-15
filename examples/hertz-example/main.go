@@ -40,13 +40,12 @@ func main() {
 
 func dummyHandler(ctx context.Context, c *app.RequestContext) {
 
-	log.Printf("middlewareVar: %v", ctx.Value("middlewareVar"))
-
 	var data [][2]interface{}
 	addKV := func(k string, v interface{}) {
 		data = append(data, [2]interface{}{k, v})
 	}
 
+	addKV("middlewareVar", ctx.Value("middlewareVar"))
 	addKV("Params", c.Params)
 	addKV("Host", string(c.Host()))
 	addKV("Path", string(c.Path()))
