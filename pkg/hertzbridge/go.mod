@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/cloudwego/hertz v0.4.2
-	github.com/jxskiss/treemux v0.2.1
+	github.com/jxskiss/treemux v0.2.2
 )
 
 require (

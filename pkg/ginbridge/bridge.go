@@ -2,7 +2,6 @@ package ginbridge
 
 import (
 	"net/http"
-	"reflect"
 	"sync/atomic"
 	"unsafe"
 
@@ -10,37 +9,10 @@ import (
 	"github.com/jxskiss/treemux"
 )
 
-type GinHandler struct {
-	HandlersChain gin.HandlersChain
-}
-
-func (h *GinHandler) addMiddleware(mw gin.HandlerFunc) {
-	if inHandlersChain(h.HandlersChain, mw) {
-		panic("treemux/pkg/ginbridge: middleware already registered for this handler")
-	}
-
-	chain := h.HandlersChain
-	if len(chain) == cap(h.HandlersChain) {
-		chain = append(gin.HandlersChain{mw}, chain...)
-	} else {
-		chain = chain[:len(chain)+1]
-		copy(chain[:len(chain)-1], chain[1:])
-		chain[0] = mw
-	}
-	h.HandlersChain = chain
-}
-
-func inHandlersChain(chain gin.HandlersChain, h gin.HandlerFunc) bool {
-	for _, x := range chain {
-		if getFuncAddr(x) == getFuncAddr(h) {
-			return true
-		}
-	}
-	return false
-}
-
-func getFuncAddr(v interface{}) uintptr {
-	return reflect.ValueOf(reflect.ValueOf(v)).Field(1).Pointer()
+// New creates a new GinBridge.
+func New() *GinBridge {
+	bridge := &GinBridge{}
+	return bridge
 }
 
 type GinBridge struct {
@@ -53,21 +25,21 @@ func (*GinBridge) IsHandlerValid(handler *GinHandler) bool {
 	return handler != nil && len(handler.HandlersChain) > 0
 }
 
-func (*GinBridge) WrapHandler(handler gin.HandlerFunc) *GinHandler {
+func (*GinBridge) WrapHandler(handlers ...gin.HandlerFunc) *GinHandler {
 	return &GinHandler{
-		HandlersChain: gin.HandlersChain{handler},
+		HandlersChain: handlers,
 	}
 }
 
-func (*GinBridge) WrapMiddleware(mw gin.HandlerFunc) treemux.MiddlewareFunc[*GinHandler] {
+func (*GinBridge) WrapMiddleware(handlers ...gin.HandlerFunc) treemux.MiddlewareFunc[*GinHandler] {
 	return func(next *GinHandler) *GinHandler {
-		next.addMiddleware(mw)
+		next.addMiddlewares(handlers)
 		return next
 	}
 }
 
 func (b *GinBridge) Serve(c *gin.Context) {
-	mux := b.getMux()
+	mux := b.GetRouter()
 	lr, _ := mux.Lookup(c.Writer, c.Request)
 
 	if lr.RedirectPath != "" {
@@ -82,10 +54,7 @@ func (b *GinBridge) Serve(c *gin.Context) {
 	}
 
 	if lr.Handler != nil {
-		realHandlers := append(getGinContextHandlers(c), lr.Handler.HandlersChain...)
-		setGinContextHandlers(c, realHandlers)
-		setGinContextFullPath(c, lr.RoutePath)
-		c.Next()
+		lr.Handler.run(lr.RoutePath, c)
 		return
 	}
 
@@ -100,50 +69,15 @@ func (b *GinBridge) Serve(c *gin.Context) {
 	http.NotFound(c.Writer, c.Request)
 }
 
-func (b *GinBridge) getMux() *treemux.TreeMux[*GinHandler] {
+// GetRouter returns the current router attached to this bridge.
+func (b *GinBridge) GetRouter() *treemux.TreeMux[*GinHandler] {
 	return (*treemux.TreeMux[*GinHandler])(atomic.LoadPointer(&b.mux))
 }
 
-// SetMux changes the mux of the bridge, it's safe to use concurrently.
-func (b *GinBridge) SetMux(mux *treemux.TreeMux[*GinHandler]) {
+// SetRouter changes the router of the bridge, it's safe to change the bridge's
+// router concurrently.
+// It also assigns the bridge to router.Bridge.
+func (b *GinBridge) SetRouter(mux *treemux.TreeMux[*GinHandler]) {
 	mux.Bridge = b
 	atomic.StorePointer(&b.mux, unsafe.Pointer(mux))
-}
-
-// New creates a new GinBridge.
-func New(mux *treemux.TreeMux[*GinHandler]) *GinBridge {
-	bridge := &GinBridge{}
-	bridge.SetMux(mux)
-	return bridge
-}
-
-var (
-	handlersOffset uintptr
-	fullPathOffset uintptr
-)
-
-func init() {
-	typ := reflect.TypeOf(gin.Context{})
-	handlersField, ok := typ.FieldByName("handlers")
-	if !ok {
-		panic("treemux/pkg/ginbridge: cannot find field gin.Context.handlers")
-	}
-	fullPathField, ok := typ.FieldByName("fullPath")
-	if !ok {
-		panic("treemux/pkg/ginbridge: cannot find field gin.Context.fullPath")
-	}
-	handlersOffset = handlersField.Offset
-	fullPathOffset = fullPathField.Offset
-}
-
-func getGinContextHandlers(c *gin.Context) gin.HandlersChain {
-	return *(*gin.HandlersChain)(unsafe.Pointer(uintptr(unsafe.Pointer(c)) + handlersOffset))
-}
-
-func setGinContextHandlers(c *gin.Context, chain gin.HandlersChain) {
-	*(*gin.HandlersChain)(unsafe.Pointer(uintptr(unsafe.Pointer(c)) + handlersOffset)) = chain
-}
-
-func setGinContextFullPath(c *gin.Context, path string) {
-	*(*string)(unsafe.Pointer(uintptr(unsafe.Pointer(c)) + fullPathOffset)) = path
 }

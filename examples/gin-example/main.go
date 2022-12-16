@@ -12,15 +12,25 @@ import (
 
 func main() {
 	router := treemux.New[*ginbridge.GinHandler]()
-	bridge := ginbridge.New(router)
-	bridge.SetMux(router)
+	bridge := ginbridge.New()
+	bridge.SetRouter(router)
 
-	router.Use(bridge.WrapMiddleware(func(c *gin.Context) {
-		c.Set("middlewareVar", "middlewareValue")
-	}))
+	router.Use(bridge.WrapMiddleware(
+		func(c *gin.Context) {
+			c.Set("middlewareVar1", "middlewareValue1")
+		},
+		func(c *gin.Context) {
+			c.Set("middlewareVar2", "middlewareValue2")
+		},
+	))
 
 	examples.SetupRoutes(router, func() *ginbridge.GinHandler {
-		return bridge.WrapHandler(dummyHandler)
+		return bridge.WrapHandler(
+			func(c *gin.Context) {
+				log.Printf("middleware added in bridge.WrapHandler: middlewareVar2= %v", c.GetString("middlewareVar2"))
+			},
+			dummyHandler,
+		)
 	})
 
 	// gin.Default() returns an Engine instance with the Logger and Recovery
@@ -40,7 +50,8 @@ func dummyHandler(c *gin.Context) {
 		data = append(data, [2]interface{}{k, v})
 	}
 
-	addKV("middlewareVar", c.GetString("middlewareVar"))
+	addKV("middlewareVar1", c.GetString("middlewareVar1"))
+	addKV("middlewareVar2", c.GetString("middlewareVar2"))
 	addKV("Params", c.Params)
 	addKV("Host", c.Request.Host)
 	addKV("Path", c.Request.URL.Path)

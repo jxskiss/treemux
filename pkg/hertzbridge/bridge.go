@@ -3,7 +3,6 @@ package hertzbridge
 import (
 	"context"
 	"net/http"
-	"reflect"
 	"sync/atomic"
 	"unsafe"
 
@@ -12,37 +11,10 @@ import (
 	"github.com/jxskiss/treemux"
 )
 
-type HertzHandler struct {
-	HandlersChain app.HandlersChain
-}
-
-func (h *HertzHandler) addMiddleware(mw app.HandlerFunc) {
-	if inHandlersChain(h.HandlersChain, mw) {
-		panic("treemux/pkg/hertzbridge: middleware already registered for this handler")
-	}
-
-	chain := h.HandlersChain
-	if len(chain) == cap(h.HandlersChain) {
-		chain = append(app.HandlersChain{mw}, chain...)
-	} else {
-		chain = chain[:len(chain)+1]
-		copy(chain[:len(chain)-1], chain[1:])
-		chain[0] = mw
-	}
-	h.HandlersChain = chain
-}
-
-func inHandlersChain(chain app.HandlersChain, h app.HandlerFunc) bool {
-	for _, x := range chain {
-		if getFuncAddr(x) == getFuncAddr(h) {
-			return true
-		}
-	}
-	return false
-}
-
-func getFuncAddr(v interface{}) uintptr {
-	return reflect.ValueOf(reflect.ValueOf(v)).Field(1).Pointer()
+// New creates a new HertzBridge.
+func New() *HertzBridge {
+	bridge := &HertzBridge{}
+	return bridge
 }
 
 type HertzBridge struct {
@@ -55,15 +27,15 @@ func (*HertzBridge) IsHandlerValid(handler *HertzHandler) bool {
 	return handler != nil && len(handler.HandlersChain) > 0
 }
 
-func (*HertzBridge) WrapHandler(handler app.HandlerFunc) *HertzHandler {
+func (*HertzBridge) WrapHandler(handlers ...app.HandlerFunc) *HertzHandler {
 	return &HertzHandler{
-		HandlersChain: app.HandlersChain{handler},
+		HandlersChain: handlers,
 	}
 }
 
-func (*HertzBridge) WrapMiddleware(mw app.HandlerFunc) treemux.MiddlewareFunc[*HertzHandler] {
+func (*HertzBridge) WrapMiddleware(handlers ...app.HandlerFunc) treemux.MiddlewareFunc[*HertzHandler] {
 	return func(next *HertzHandler) *HertzHandler {
-		next.addMiddleware(mw)
+		next.addMiddlewares(handlers)
 		return next
 	}
 }
@@ -73,7 +45,7 @@ func (b *HertzBridge) Serve(ctx context.Context, rc *app.RequestContext) {
 	requestURI := string(rc.Request.RequestURI())
 	urlPath := string(rc.URI().Path())
 
-	mux := b.getMux()
+	mux := b.GetRouter()
 	lr, _ := mux.LookupByPath(method, requestURI, urlPath)
 
 	if lr.RedirectPath != "" {
@@ -88,10 +60,7 @@ func (b *HertzBridge) Serve(ctx context.Context, rc *app.RequestContext) {
 	}
 
 	if lr.Handler != nil {
-		realHandlers := append(rc.Handlers(), lr.Handler.HandlersChain...)
-		rc.SetHandlers(realHandlers)
-		rc.SetFullPath(lr.RoutePath)
-		rc.Next(ctx)
+		lr.Handler.run(lr.RoutePath, ctx, rc)
 		return
 	}
 
@@ -106,19 +75,15 @@ func (b *HertzBridge) Serve(ctx context.Context, rc *app.RequestContext) {
 	rc.NotFound()
 }
 
-func (b *HertzBridge) getMux() *treemux.TreeMux[*HertzHandler] {
+// GetRouter returns the current router attached to this bridge.
+func (b *HertzBridge) GetRouter() *treemux.TreeMux[*HertzHandler] {
 	return (*treemux.TreeMux[*HertzHandler])(atomic.LoadPointer(&b.mux))
 }
 
-// SetMux changes the mux of the bridge, it's safe to use concurrently.
-func (b *HertzBridge) SetMux(mux *treemux.TreeMux[*HertzHandler]) {
+// SetRouter changes the router of the bridge, it's safe to change
+// the bridge's router concurrently.
+// It also assigns the bridge to router.Bridge.
+func (b *HertzBridge) SetRouter(mux *treemux.TreeMux[*HertzHandler]) {
 	mux.Bridge = b
 	atomic.StorePointer(&b.mux, unsafe.Pointer(mux))
-}
-
-// New creates a new HertzBridge.
-func New(mux *treemux.TreeMux[*HertzHandler]) *HertzBridge {
-	bridge := &HertzBridge{}
-	bridge.SetMux(mux)
-	return bridge
 }

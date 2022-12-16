@@ -25,8 +25,8 @@ github.com/henrylee2cn/ameda v1.4.10 h1:JdvI2Ekq7tapdPsuhrc4CaFiqw6QXFvZIULWJgQy
 github.com/henrylee2cn/ameda v1.4.10/go.mod h1:liZulR8DgHxdK+MEwvZIylGnmcjzQ6N6f2PlWe7nEO4=
 github.com/henrylee2cn/goutil v0.0.0-20210127050712-89660552f6f8 h1:yE9ULgp02BhYIrO6sdV/FPe0xQM6fNHkVQW2IAymfM0=
 github.com/henrylee2cn/goutil v0.0.0-20210127050712-89660552f6f8/go.mod h1:Nhe/DM3671a5udlv2AdV2ni/MZzgfv2qrPL5nIi3EGQ=
-github.com/jxskiss/treemux v0.2.1 h1:E/vM/QxnEodgyP4KRVjfR/wikyKyYLhLhNbTT9qcfBk=
-github.com/jxskiss/treemux v0.2.1/go.mod h1:vn8UcIxXUkeRn87ZZwje7OR1ciY0JnQGHpAW91PwWC0=
+github.com/jxskiss/treemux v0.2.2 h1:lrMQ169VoS6hK6NnNbK5LNGPBWxynkWXFbx5AaJfMos=
+github.com/jxskiss/treemux v0.2.2/go.mod h1:vn8UcIxXUkeRn87ZZwje7OR1ciY0JnQGHpAW91PwWC0=
 github.com/klauspost/cpuid/v2 v2.0.9 h1:lgaqFMSdTdQYdZ04uHyN2d/eKdOMyi2YLSvlQIBFYa4=
 github.com/klauspost/cpuid/v2 v2.0.9/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
 github.com/nyaruka/phonenumbers v1.0.55 h1:bj0nTO88Y68KeUQ/n3Lo2KgK7lM1hF7L9NFuwcCl3yg=

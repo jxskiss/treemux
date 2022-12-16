@@ -6,7 +6,7 @@ require (
 	github.com/cloudwego/hertz v0.4.2
 	github.com/dimfeld/httptreemux/v5 v5.5.0
 	github.com/gin-gonic/gin v1.8.1
-	github.com/jxskiss/treemux v0.2.0
+	github.com/jxskiss/treemux v0.2.2
 	github.com/jxskiss/treemux/pkg/ginbridge v0.0.0-00010101000000-000000000000
 	github.com/jxskiss/treemux/pkg/hertzbridge v0.0.0-00010101000000-000000000000
 )
