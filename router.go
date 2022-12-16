@@ -207,14 +207,7 @@ func (t *TreeMux[_]) redirectStatusCode(method string) (int, bool) {
 	}
 }
 
-func (t *TreeMux[T]) lookup(w http.ResponseWriter, r *http.Request) (result LookupResult[T], found bool) {
-	method := r.Method
-	requestURI := r.RequestURI
-	urlPath := r.URL.Path
-	return t.lookupByPath(method, requestURI, urlPath)
-}
-
-func (t *TreeMux[T]) lookupByPath(method, requestURI, urlPath string) (result LookupResult[T], found bool) {
+func (t *TreeMux[T]) lookup(method, requestURI, urlPath string) (result LookupResult[T], found bool) {
 
 	result.StatusCode = http.StatusNotFound
 
@@ -339,15 +332,20 @@ func (t *TreeMux[T]) Lookup(w http.ResponseWriter, r *http.Request) (LookupResul
 		t.mutex.RLock()
 		defer t.mutex.RUnlock()
 	}
-	return t.lookup(w, r)
+
+	method := r.Method
+	requestURI := r.RequestURI
+	urlPath := r.URL.Path
+	return t.lookup(method, requestURI, urlPath)
 }
 
+// LookupByPath is similar to Lookup, except that it accepts the routing parameters directly.
 func (t *TreeMux[T]) LookupByPath(method, requestURI, urlPath string) (LookupResult[T], bool) {
 	if t.SafeAddRoutesWhileRunning {
 		t.mutex.RLock()
 		defer t.mutex.RUnlock()
 	}
-	return t.lookupByPath(method, requestURI, urlPath)
+	return t.lookup(method, requestURI, urlPath)
 }
 
 // defaultMethodNotAllowedHandler is the default handler for TreeMux.MethodNotAllowedHandler,

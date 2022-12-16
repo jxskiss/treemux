@@ -52,10 +52,7 @@ func (t *TreeMux[T]) ServeLookupResult(
 
 	r = t.setDefaultRequestContext(r)
 	if t.UseContextData {
-		r = AddContextData(r, &contextData{
-			route:  lr.RoutePath,
-			params: lr.Params,
-		})
+		r = AddContextData(r, NewContextData(lr.RoutePath, lr.Params))
 	}
 
 	if t.Bridge == nil {
@@ -73,11 +70,14 @@ func (t *TreeMux[T]) ServeLookupResult(
 // UseHandler is like Use but accepts [http.Handler] middleware.
 // It calls the middleware wrapper to convert the given middleware
 // to a MiddlewareFunc.
-func (g *Group[T]) UseHandler(middleware func(http.Handler) http.Handler) {
+func (g *Group[T]) UseHandler(middlewares ...func(http.Handler) http.Handler) {
 	if g.mux.Bridge == nil {
 		panic("treemux: Bridge is not configured")
 	}
-	g.stack = append(g.stack, g.mux.Bridge.ConvertMiddleware(middleware))
+	for _, mw := range middlewares {
+		mw := g.mux.Bridge.ConvertMiddleware(mw)
+		g.stack = append(g.stack, mw)
+	}
 }
 
 // HandlerFunc is a default handler type.
@@ -149,13 +149,13 @@ func setDefaultBridgeFunctions[T HandlerConstraint](r *TreeMux[T]) {
 type UnimplementedBridge[T HandlerConstraint] struct{}
 
 func (UnimplementedBridge[T]) IsHandlerValid(handler T) bool {
-	panic("implement me")
+	panic("treemux: Bridge.IsHandlerValid is not implemented")
 }
 
 func (UnimplementedBridge[T]) ToHTTPHandlerFunc(handler T, urlParams Params) http.HandlerFunc {
-	panic("implement me")
+	panic("treemux: Bridge.ToHTTPHandlerFunc is not implemented")
 }
 
 func (UnimplementedBridge[T]) ConvertMiddleware(middleware HTTPHandlerMiddleware) MiddlewareFunc[T] {
-	panic("implement me")
+	panic("treemux: Bridge.ConvertMiddleware is not implemented")
 }

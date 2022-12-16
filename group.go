@@ -41,8 +41,8 @@ func (g *Group[T]) NewGroup(path string) *Group[T] {
 }
 
 // Use appends a middleware handler to the Group middleware stack.
-func (g *Group[T]) Use(fn MiddlewareFunc[T]) {
-	g.stack = append(g.stack, fn)
+func (g *Group[T]) Use(middlewares ...MiddlewareFunc[T]) {
+	g.stack = append(g.stack, middlewares...)
 }
 
 // Handle adds routing rules to Group.

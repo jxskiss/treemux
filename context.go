@@ -35,6 +35,14 @@ type ContextData interface {
 	Params() Params
 }
 
+// NewContextData creates a new ContextData.
+func NewContextData(route string, params Params) ContextData {
+	return &contextData{
+		route:  route,
+		params: params,
+	}
+}
+
 // GetContextData returns the ContextData associated with the request.
 // In case that no data is available, it returns an empty ContextData.
 func GetContextData(r *http.Request) ContextData {
