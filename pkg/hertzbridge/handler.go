@@ -5,13 +5,14 @@ import (
 	"reflect"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/jxskiss/treemux"
 )
 
-type HertzHandler struct {
+type Handler struct {
 	HandlersChain app.HandlersChain
 }
 
-func (h *HertzHandler) addMiddlewares(handlers []app.HandlerFunc) {
+func (h *Handler) addMiddlewares(handlers []app.HandlerFunc) {
 	for _, mw := range handlers {
 		if h.inHandlersChain(mw) {
 			panic("treemux/pkg/hertzbridge: middleware already added for this handler")
@@ -31,7 +32,7 @@ func (h *HertzHandler) addMiddlewares(handlers []app.HandlerFunc) {
 	h.HandlersChain = chain
 }
 
-func (h *HertzHandler) inHandlersChain(mw app.HandlerFunc) bool {
+func (h *Handler) inHandlersChain(mw app.HandlerFunc) bool {
 	mwAddr := getFuncAddr(mw)
 	for _, x := range h.HandlersChain {
 		if getFuncAddr(x) == mwAddr {
@@ -45,9 +46,24 @@ func getFuncAddr(v interface{}) uintptr {
 	return reflect.ValueOf(reflect.ValueOf(v)).Field(1).Pointer()
 }
 
-func (h *HertzHandler) run(fullPath string, ctx context.Context, c *app.RequestContext) {
+func (h *Handler) run(fullPath string, ctx context.Context, c *app.RequestContext) {
 	realHandlers := append(c.Handlers(), h.HandlersChain...)
 	c.SetHandlers(realHandlers)
 	c.SetFullPath(fullPath)
 	c.Next(ctx)
+}
+
+// WrapHandler wraps hertz handler functions into a *Handler.
+func WrapHandler(handlers ...app.HandlerFunc) *Handler {
+	return &Handler{
+		HandlersChain: handlers,
+	}
+}
+
+// WrapMiddleware wraps hertz handler functions into a treemux MiddlewareFunc.
+func WrapMiddleware(handlers ...app.HandlerFunc) treemux.MiddlewareFunc[*Handler] {
+	return func(next *Handler) *Handler {
+		next.addMiddlewares(handlers)
+		return next
+	}
 }

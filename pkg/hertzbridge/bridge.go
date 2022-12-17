@@ -11,36 +11,25 @@ import (
 	"github.com/jxskiss/treemux"
 )
 
-// New creates a new HertzBridge.
-func New() *HertzBridge {
-	bridge := &HertzBridge{}
+// New creates a new Bridge.
+func New() *Bridge {
+	bridge := &Bridge{}
 	return bridge
 }
 
-type HertzBridge struct {
-	mux unsafe.Pointer // *treemux.TreeMux[*HertzHandler]
+// Bridge implements treemux.Bridge[*Handler] and can be used
+// as a dynamic-configurable router.
+type Bridge struct {
+	mux unsafe.Pointer // *treemux.TreeMux[*Handler]
 
-	treemux.UnimplementedBridge[*HertzHandler]
+	treemux.UnimplementedBridge[*Handler]
 }
 
-func (*HertzBridge) IsHandlerValid(handler *HertzHandler) bool {
+func (*Bridge) IsHandlerValid(handler *Handler) bool {
 	return handler != nil && len(handler.HandlersChain) > 0
 }
 
-func (*HertzBridge) WrapHandler(handlers ...app.HandlerFunc) *HertzHandler {
-	return &HertzHandler{
-		HandlersChain: handlers,
-	}
-}
-
-func (*HertzBridge) WrapMiddleware(handlers ...app.HandlerFunc) treemux.MiddlewareFunc[*HertzHandler] {
-	return func(next *HertzHandler) *HertzHandler {
-		next.addMiddlewares(handlers)
-		return next
-	}
-}
-
-func (b *HertzBridge) Serve(ctx context.Context, rc *app.RequestContext) {
+func (b *Bridge) Serve(ctx context.Context, rc *app.RequestContext) {
 	method := string(rc.Method())
 	requestURI := string(rc.Request.RequestURI())
 	urlPath := string(rc.URI().Path())
@@ -76,14 +65,14 @@ func (b *HertzBridge) Serve(ctx context.Context, rc *app.RequestContext) {
 }
 
 // GetRouter returns the current router attached to this bridge.
-func (b *HertzBridge) GetRouter() *treemux.TreeMux[*HertzHandler] {
-	return (*treemux.TreeMux[*HertzHandler])(atomic.LoadPointer(&b.mux))
+func (b *Bridge) GetRouter() *treemux.TreeMux[*Handler] {
+	return (*treemux.TreeMux[*Handler])(atomic.LoadPointer(&b.mux))
 }
 
 // SetRouter changes the router of the bridge, it's safe to change
 // the bridge's router concurrently.
 // It also assigns the bridge to router.Bridge.
-func (b *HertzBridge) SetRouter(mux *treemux.TreeMux[*HertzHandler]) {
+func (b *Bridge) SetRouter(mux *treemux.TreeMux[*Handler]) {
 	mux.Bridge = b
 	atomic.StorePointer(&b.mux, unsafe.Pointer(mux))
 }

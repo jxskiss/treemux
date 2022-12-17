@@ -11,11 +11,11 @@ import (
 )
 
 func main() {
-	router := treemux.New[*ginbridge.GinHandler]()
+	router := treemux.New[*ginbridge.Handler]()
 	bridge := ginbridge.New()
 	bridge.SetRouter(router)
 
-	router.Use(bridge.WrapMiddleware(
+	router.Use(ginbridge.WrapMiddleware(
 		func(c *gin.Context) {
 			c.Set("middlewareVar1", "middlewareValue1")
 		},
@@ -24,8 +24,8 @@ func main() {
 		},
 	))
 
-	examples.SetupRoutes(router, func() *ginbridge.GinHandler {
-		return bridge.WrapHandler(
+	examples.SetupRoutes(router, func() *ginbridge.Handler {
+		return ginbridge.WrapHandler(
 			func(c *gin.Context) {
 				log.Printf("middleware added in bridge.WrapHandler: middlewareVar2= %v", c.GetString("middlewareVar2"))
 			},

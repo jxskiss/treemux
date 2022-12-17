@@ -9,36 +9,25 @@ import (
 	"github.com/jxskiss/treemux"
 )
 
-// New creates a new GinBridge.
-func New() *GinBridge {
-	bridge := &GinBridge{}
+// New creates a new Bridge.
+func New() *Bridge {
+	bridge := &Bridge{}
 	return bridge
 }
 
-type GinBridge struct {
-	mux unsafe.Pointer // *treemux.TreeMux[*GinHandler]
+// Bridge implements treemux.Bridge[*Handler] and can be used
+// as a dynamic-configurable router.
+type Bridge struct {
+	mux unsafe.Pointer // *treemux.TreeMux[*Handler]
 
-	treemux.UnimplementedBridge[*GinHandler]
+	treemux.UnimplementedBridge[*Handler]
 }
 
-func (*GinBridge) IsHandlerValid(handler *GinHandler) bool {
+func (*Bridge) IsHandlerValid(handler *Handler) bool {
 	return handler != nil && len(handler.HandlersChain) > 0
 }
 
-func (*GinBridge) WrapHandler(handlers ...gin.HandlerFunc) *GinHandler {
-	return &GinHandler{
-		HandlersChain: handlers,
-	}
-}
-
-func (*GinBridge) WrapMiddleware(handlers ...gin.HandlerFunc) treemux.MiddlewareFunc[*GinHandler] {
-	return func(next *GinHandler) *GinHandler {
-		next.addMiddlewares(handlers)
-		return next
-	}
-}
-
-func (b *GinBridge) Serve(c *gin.Context) {
+func (b *Bridge) Serve(c *gin.Context) {
 	mux := b.GetRouter()
 	lr, _ := mux.Lookup(c.Writer, c.Request)
 
@@ -70,14 +59,14 @@ func (b *GinBridge) Serve(c *gin.Context) {
 }
 
 // GetRouter returns the current router attached to this bridge.
-func (b *GinBridge) GetRouter() *treemux.TreeMux[*GinHandler] {
-	return (*treemux.TreeMux[*GinHandler])(atomic.LoadPointer(&b.mux))
+func (b *Bridge) GetRouter() *treemux.TreeMux[*Handler] {
+	return (*treemux.TreeMux[*Handler])(atomic.LoadPointer(&b.mux))
 }
 
 // SetRouter changes the router of the bridge, it's safe to change the bridge's
 // router concurrently.
 // It also assigns the bridge to router.Bridge.
-func (b *GinBridge) SetRouter(mux *treemux.TreeMux[*GinHandler]) {
+func (b *Bridge) SetRouter(mux *treemux.TreeMux[*Handler]) {
 	mux.Bridge = b
 	atomic.StorePointer(&b.mux, unsafe.Pointer(mux))
 }

@@ -5,13 +5,14 @@ import (
 	"unsafe"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jxskiss/treemux"
 )
 
-type GinHandler struct {
+type Handler struct {
 	HandlersChain gin.HandlersChain
 }
 
-func (h *GinHandler) addMiddlewares(handlers []gin.HandlerFunc) {
+func (h *Handler) addMiddlewares(handlers []gin.HandlerFunc) {
 	for _, mw := range handlers {
 		if h.inHandlersChain(mw) {
 			panic("treemux/pkg/ginbridge: middleware already added for this handler")
@@ -31,7 +32,7 @@ func (h *GinHandler) addMiddlewares(handlers []gin.HandlerFunc) {
 	h.HandlersChain = chain
 }
 
-func (h *GinHandler) inHandlersChain(mw gin.HandlerFunc) bool {
+func (h *Handler) inHandlersChain(mw gin.HandlerFunc) bool {
 	mwAddr := getFuncAddr(mw)
 	for _, x := range h.HandlersChain {
 		if getFuncAddr(x) == mwAddr {
@@ -45,7 +46,7 @@ func getFuncAddr(v interface{}) uintptr {
 	return reflect.ValueOf(reflect.ValueOf(v)).Field(1).Pointer()
 }
 
-func (h *GinHandler) run(fullPath string, c *gin.Context) {
+func (h *Handler) run(fullPath string, c *gin.Context) {
 	realHandlers := append(getGinContextHandlers(c), h.HandlersChain...)
 	setGinContextHandlers(c, realHandlers)
 	setGinContextFullPath(c, fullPath)
@@ -81,4 +82,19 @@ func setGinContextHandlers(c *gin.Context, chain gin.HandlersChain) {
 
 func setGinContextFullPath(c *gin.Context, path string) {
 	*(*string)(unsafe.Pointer(uintptr(unsafe.Pointer(c)) + fullPathOffset)) = path
+}
+
+// WrapHandler wraps gin handler functions into a *Handler.
+func WrapHandler(handlers ...gin.HandlerFunc) *Handler {
+	return &Handler{
+		HandlersChain: handlers,
+	}
+}
+
+// WrapMiddleware wraps gin handler functions into a treemux MiddlewareFunc.
+func WrapMiddleware(handlers ...gin.HandlerFunc) treemux.MiddlewareFunc[*Handler] {
+	return func(next *Handler) *Handler {
+		next.addMiddlewares(handlers)
+		return next
+	}
 }

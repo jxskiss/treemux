@@ -13,11 +13,11 @@ import (
 )
 
 func main() {
-	router := treemux.New[*hertzbridge.HertzHandler]()
+	router := treemux.New[*hertzbridge.Handler]()
 	bridge := hertzbridge.New()
 	bridge.SetRouter(router)
 
-	router.Use(bridge.WrapMiddleware(
+	router.Use(hertzbridge.WrapMiddleware(
 		func(ctx context.Context, c *app.RequestContext) {
 			ctx = context.WithValue(ctx, "middlewareVar1", "middlewareValue1")
 			c.Next(ctx)
@@ -28,8 +28,8 @@ func main() {
 		},
 	))
 
-	examples.SetupRoutes(router, func() *hertzbridge.HertzHandler {
-		return bridge.WrapHandler(
+	examples.SetupRoutes(router, func() *hertzbridge.Handler {
+		return hertzbridge.WrapHandler(
 			func(ctx context.Context, c *app.RequestContext) {
 				log.Printf("middleware added in bridge.WrapHandler: middlewareVar2= %v", c.GetString("middlewareVar2"))
 			},
