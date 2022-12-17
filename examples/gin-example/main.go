@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
@@ -23,6 +24,25 @@ func main() {
 			c.Set("middlewareVar2", "middlewareValue2")
 		},
 	))
+
+	router.UseHandler(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cArg := r.URL.Query().Get("c")
+			log.Printf("in http handler middleware, c= %v", cArg)
+			if cArg == "next" {
+
+				// Go to next handler.
+				next.ServeHTTP(w, r)
+
+			} else {
+
+				// Here we don't call next.ServeHTTP, the resting handlers won't be called.
+				w.WriteHeader(200)
+				w.Write([]byte("Early response from http handler middleware."))
+
+			}
+		})
+	})
 
 	examples.SetupRoutes(router, func() *ginbridge.Handler {
 		return ginbridge.WrapHandler(

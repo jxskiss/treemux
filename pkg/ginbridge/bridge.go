@@ -27,6 +27,31 @@ func (*Bridge) IsHandlerValid(handler *Handler) bool {
 	return handler != nil && len(handler.HandlersChain) > 0
 }
 
+type ginContextWrapper struct {
+	c      *gin.Context
+	called bool
+}
+
+func (c *ginContextWrapper) ServeHTTP(_ http.ResponseWriter, _ *http.Request) {
+	c.called = true
+	c.c.Next()
+}
+
+func (*Bridge) ConvertMiddleware(middleware treemux.HTTPHandlerMiddleware) treemux.MiddlewareFunc[*Handler] {
+	wrapper := func(c *gin.Context) {
+		innerHandler := &ginContextWrapper{c: c}
+		w, r := c.Writer, c.Request
+		middleware(innerHandler).ServeHTTP(w, r)
+		if !innerHandler.called {
+			c.Abort()
+		}
+	}
+	return func(next *Handler) *Handler {
+		next.addMiddlewares([]gin.HandlerFunc{wrapper})
+		return next
+	}
+}
+
 func (b *Bridge) Serve(c *gin.Context) {
 	mux := b.GetRouter()
 	lr, _ := mux.Lookup(c.Writer, c.Request)
