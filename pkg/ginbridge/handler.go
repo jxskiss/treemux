@@ -1,6 +1,7 @@
 package ginbridge
 
 import (
+	"net/http"
 	"reflect"
 	"unsafe"
 
@@ -88,6 +89,20 @@ func setGinContextFullPath(c *gin.Context, path string) {
 func WrapHandler(handlers ...gin.HandlerFunc) *Handler {
 	return &Handler{
 		HandlersChain: handlers,
+	}
+}
+
+// WrapHTTPHandler wraps a [http.Handler] into a *Handler.
+// This wrapper function allows http.Handler to be used as gin handler endpoint.
+// Note that the returned handler can only be used as a leaf handler, but not a
+// middleware handler.
+func WrapHTTPHandler(handler http.Handler) *Handler {
+	wrapper := func(c *gin.Context) {
+		w, r := c.Writer, c.Request
+		handler.ServeHTTP(w, r)
+	}
+	return &Handler{
+		HandlersChain: gin.HandlersChain{wrapper},
 	}
 }
 
