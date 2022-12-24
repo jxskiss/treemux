@@ -1020,9 +1020,11 @@ func TestLookup(t *testing.T) {
 	router.POST("/user/dimfeld", simpleHandler)
 	router.GET("/abc/*", simpleHandler)
 	router.POST("/abc/*", simpleHandler)
+	router.GET("/def/:param1/", simpleHandler)
+	router.POST("/def/:param1/somepath", simpleHandler)
 	router.GET(`/smith/~^(\w+)`, simpleHandler)
 
-	var tryLookup = func(method, path string, expectFound bool, expectCode int) {
+	var tryLookup = func(method, path string, expectFound bool, expectCode int, expectRouteType RouteType) {
 		r, _ := newRequest(method, path, nil)
 		w := &mockResponseWriter{}
 		lr, found := router.Lookup(w, r)
@@ -1034,6 +1036,12 @@ func TestLookup(t *testing.T) {
 			t.Errorf("%s %s expected status code %d, saw %d", method, path, expectCode, lr.StatusCode)
 		}
 
+		if lr.StatusCode != http.StatusNotFound {
+			if lr.RouteType != expectRouteType {
+				t.Errorf("%s %s expected route type %d, saw %d", method, path, expectRouteType, lr.RouteType)
+			}
+		}
+
 		if w.code != 0 {
 			t.Errorf("%s %s unexpectedly wrote status %d", method, path, w.code)
 		}
@@ -1043,20 +1051,25 @@ func TestLookup(t *testing.T) {
 		}
 	}
 
-	tryLookup("GET", "/", true, http.StatusOK)
-	tryLookup("GET", "/", true, http.StatusOK)
-	tryLookup("POST", "/user/dimfeld", true, http.StatusOK)
-	tryLookup("POST", "/user/dimfeld/", true, http.StatusMovedPermanently)
-	tryLookup("PATCH", "/user/dimfeld", false, http.StatusMethodNotAllowed)
-	tryLookup("GET", "/abc/def/ghi", true, http.StatusOK)
+	tryLookup("GET", "/", true, http.StatusOK, Static)
+	tryLookup("GET", "/", true, http.StatusOK, Static)
+	tryLookup("POST", "/user/dimfeld", true, http.StatusOK, Static)
+	tryLookup("POST", "/user/dimfeld/", true, http.StatusMovedPermanently, Static)
+	tryLookup("PATCH", "/user/dimfeld", false, http.StatusMethodNotAllowed, Static)
 
-	tryLookup("GET", "/smith/something", true, http.StatusOK)
-	tryLookup("POST", "/smith/something", false, http.StatusMethodNotAllowed)
-	tryLookup("GET", "/smith/***something", false, http.StatusNotFound)
-	tryLookup("POST", "/smith/***something", false, http.StatusNotFound)
+	tryLookup("GET", "/abc/def/ghi", true, http.StatusOK, CatchAll)
+
+	tryLookup("GET", "/def/ghi/", true, http.StatusOK, Wildcard)
+	tryLookup("GET", "/def/ghi", true, http.StatusMovedPermanently, Wildcard)
+	tryLookup("POST", "/def/ghi/somepath", true, http.StatusOK, Wildcard)
+
+	tryLookup("GET", "/smith/something", true, http.StatusOK, Regexp)
+	tryLookup("POST", "/smith/something", false, http.StatusMethodNotAllowed, Regexp)
+	tryLookup("GET", "/smith/***something", false, http.StatusNotFound, 0)
+	tryLookup("POST", "/smith/***something", false, http.StatusNotFound, 0)
 
 	router.RedirectBehavior = Redirect307
-	tryLookup("POST", "/user/dimfeld/", true, http.StatusTemporaryRedirect)
+	tryLookup("POST", "/user/dimfeld/", true, http.StatusTemporaryRedirect, Static)
 }
 
 func TestRedirectEscapedPath(t *testing.T) {

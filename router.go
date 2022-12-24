@@ -51,6 +51,15 @@ const (
 	URLPath                      // Use r.URL.Path
 )
 
+type RouteType int
+
+const (
+	Static RouteType = iota
+	Wildcard
+	Regexp
+	CatchAll
+)
+
 // HandlerConstraint is the type constraint for a handler,
 // any type can be used as a handler target.
 type HandlerConstraint = any
@@ -68,7 +77,7 @@ type LookupResult[T HandlerConstraint] struct {
 	// Non-empty RedirectPath indicates that the request should be redirected.
 	RedirectPath string
 
-	// When StatusCode is MethodNotAllowed, AllowedMethods contains the
+	// When StatusCode is `http.StatusMethodNotAllowed`, AllowedMethods contains the
 	// methods registered for the request path, else it is nil.
 	AllowedMethods []string
 
@@ -80,6 +89,10 @@ type LookupResult[T HandlerConstraint] struct {
 
 	// RoutePath is the route path registered with the result handler.
 	RoutePath string
+
+	// When StatusCode is not `http.StatusNotFound`, RouteType is the type
+	// of the matched route.
+	RouteType RouteType
 }
 
 // TreeMux is a generic HTTP request router.
@@ -243,7 +256,6 @@ func (t *TreeMux[T]) lookup(method, requestURI, urlPath string) (result LookupRe
 	if n == nil {
 		if t.RedirectCleanPath {
 			// Path was not found. Try cleaning it up and search again.
-			// TODO Test this
 			cleanPath := Clean(unescapedPath)
 			n, handler, params = t.root.search(method, cleanPath[1:], isValid)
 			if n == nil {
@@ -255,6 +267,7 @@ func (t *TreeMux[T]) lookup(method, requestURI, urlPath string) (result LookupRe
 				result.StatusCode = statusCode
 				result.RedirectPath = cleanPath
 				result.RoutePath = n.fullPath
+				result.RouteType = n.routeType
 				found = true
 				return
 			}
@@ -271,23 +284,26 @@ func (t *TreeMux[T]) lookup(method, requestURI, urlPath string) (result LookupRe
 
 		if !isValid(handler) {
 			result.StatusCode = http.StatusMethodNotAllowed
-			result.RoutePath = n.fullPath
 			result.AllowedMethods = getSortedKeys(n.leafHandlers)
+			result.RoutePath = n.fullPath
+			result.RouteType = n.routeType
 			return
 		}
 	}
 
-	if !n.isCatchAll || t.RemoveCatchAllTrailingSlash {
+	if !n.isCatchAll() || t.RemoveCatchAllTrailingSlash {
 		if trailingSlash != n.addSlash && t.RedirectTrailingSlash {
 			if statusCode, ok := t.redirectStatusCode(method); ok {
 				if n.addSlash {
 					result.StatusCode = statusCode
 					result.RedirectPath = unescapedPath + "/"
 					result.RoutePath = n.fullPath
+					result.RouteType = n.routeType
 				} else if path != "/" {
 					result.StatusCode = statusCode
 					result.RedirectPath = unescapedPath
 					result.RoutePath = n.fullPath
+					result.RouteType = n.routeType
 				}
 				if result.RedirectPath != "" {
 					found = true
@@ -313,8 +329,9 @@ func (t *TreeMux[T]) lookup(method, requestURI, urlPath string) (result LookupRe
 	result = LookupResult[T]{
 		StatusCode: http.StatusOK,
 		Params:     retParams,
-		RoutePath:  n.fullPath,
 		Handler:    handler,
+		RoutePath:  n.fullPath,
+		RouteType:  n.routeType,
 	}
 	found = true
 	return
