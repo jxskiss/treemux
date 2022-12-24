@@ -21,7 +21,8 @@ func addPath(t *testing.T, tree *node[HandlerFunc], path string) {
 
 var test *testing.T
 
-func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath string, expectedParams map[string]string) {
+func testPath(t *testing.T, tree *node[HandlerFunc], path string,
+	expectPath string, expectRouteType RouteType, expectParams map[string]string) {
 	if t.Failed() {
 		t.Log(tree.dumpTree("", " "))
 		t.FailNow()
@@ -33,12 +34,17 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 		t.Errorf("No match for %s, expected %s", path, expectPath)
 		return
 	} else if expectPath == "" && n != nil {
-		t.Errorf("Expected no match for %s but got %v with params %v", path, n, expectedParams)
+		t.Errorf("Expected no match for %s but got %v with params %v", path, n, expectParams)
 		t.Error("Node and subtree was\n" + n.dumpTree("", " "))
 		return
 	}
 
 	if n == nil {
+		return
+	}
+
+	if n.routeType != expectRouteType {
+		t.Errorf("Expected route type %d but got %d for %s", expectRouteType, n.routeType, path)
 		return
 	}
 
@@ -64,7 +70,7 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 		t.Error("Node and subtree was\n" + n.dumpTree("", " "))
 	}
 
-	if expectedParams == nil {
+	if expectParams == nil {
 		if len(paramList) != 0 {
 			t.Errorf("Path %s expected no parameters, saw %v", path, paramList)
 		}
@@ -80,7 +86,7 @@ func testPath(t *testing.T, tree *node[HandlerFunc], path string, expectPath str
 	}
 	t.Log("\tGot params", params)
 
-	for key, val := range expectedParams {
+	for key, val := range expectParams {
 		sawVal, ok := params[key]
 		if !ok {
 			t.Errorf("Path %s matched without key %s", path, key)
@@ -154,89 +160,89 @@ func TestTree(t *testing.T) {
 	addPath(t, tree, `/images3/~^(?P<category>\w+)-(?P<name>.+)$`)
 
 	testPath(t, tree, "/smith/abc/some-holiday-202110-hawaii-beach", `/smith/abc/~^some-(?P<var1>\w+)-(?P<var2>\d+)-(.*)$`,
-		map[string]string{"var1": "holiday", "var2": "202110"})
-	testPath(t, tree, "/smith/abc/some-matchthesecondregex", `/smith/abc/~^some-.*second.*$`, nil)
-	testPath(t, tree, "/smith/abc/third-no-specific-match", `/smith/~^.+$`, nil)
-	testPath(t, tree, "/users/123/something/notmatch", `/users/~^.+$`, nil)
+		Regexp, map[string]string{"var1": "holiday", "var2": "202110"})
+	testPath(t, tree, "/smith/abc/some-matchthesecondregex", `/smith/abc/~^some-.*second.*$`, Regexp, nil)
+	testPath(t, tree, "/smith/abc/third-no-specific-match", `/smith/~^.+$`, Regexp, nil)
+	testPath(t, tree, "/users/123/something/notmatch", `/users/~^.+$`, Regexp, nil)
 	testPath(t, tree, "/images3/categorya-img1.jpg", `/images3/~^(?P<category>\w+)-(?P<name>.+)$`,
-		map[string]string{"category": "categorya", "name": "img1.jpg"})
+		Regexp, map[string]string{"category": "categorya", "name": "img1.jpg"})
 	testPath(t, tree, "/images3/nocategoryimg.jpg", "/images3/*path",
-		map[string]string{"path": "nocategoryimg.jpg"})
+		CatchAll, map[string]string{"path": "nocategoryimg.jpg"})
 
 	testPath(t, tree, "/users/abc/updatePassword", "/users/:id/updatePassword",
-		map[string]string{"id": "abc"})
+		Wildcard, map[string]string{"id": "abc"})
 	testPath(t, tree, "/users/all/something", "/users/:pk/:related",
-		map[string]string{"pk": "all", "related": "something"})
+		Wildcard, map[string]string{"pk": "all", "related": "something"})
 
 	testPath(t, tree, "/aaa/abc", "/:something/abc",
-		map[string]string{"something": "aaa"})
+		Wildcard, map[string]string{"something": "aaa"})
 	testPath(t, tree, "/aaa/def", "/:something/def",
-		map[string]string{"something": "aaa"})
+		Wildcard, map[string]string{"something": "aaa"})
 
 	testPath(t, tree, "/paper", "/:page",
-		map[string]string{"page": "paper"})
+		Wildcard, map[string]string{"page": "paper"})
 
-	testPath(t, tree, "/", "/", nil)
-	testPath(t, tree, "/i", "/i", nil)
-	testPath(t, tree, "/images", "/images", nil)
-	testPath(t, tree, "/images/abc.jpg", "/images/abc.jpg", nil)
+	testPath(t, tree, "/", "/", Static, nil)
+	testPath(t, tree, "/i", "/i", Static, nil)
+	testPath(t, tree, "/images", "/images", Static, nil)
+	testPath(t, tree, "/images/abc.jpg", "/images/abc.jpg", Static, nil)
 	testPath(t, tree, "/images/something", "/images/:imgname",
-		map[string]string{"imgname": "something"})
+		Wildcard, map[string]string{"imgname": "something"})
 	testPath(t, tree, "/images/long/path", "/images/*path",
-		map[string]string{"path": "long/path"})
+		CatchAll, map[string]string{"path": "long/path"})
 	testPath(t, tree, "/images/even/longer/path", "/images/*path",
-		map[string]string{"path": "even/longer/path"})
-	testPath(t, tree, "/ima", "/ima", nil)
-	testPath(t, tree, "/apples", "/apples", nil)
-	testPath(t, tree, "/app/les", "/app/les", nil)
+		CatchAll, map[string]string{"path": "even/longer/path"})
+	testPath(t, tree, "/ima", "/ima", Static, nil)
+	testPath(t, tree, "/apples", "/apples", Static, nil)
+	testPath(t, tree, "/app/les", "/app/les", Static, nil)
 	testPath(t, tree, "/abc", "/:page",
-		map[string]string{"page": "abc"})
+		Wildcard, map[string]string{"page": "abc"})
 	testPath(t, tree, "/abc/100", "/:page/:index",
-		map[string]string{"page": "abc", "index": "100"})
+		Wildcard, map[string]string{"page": "abc", "index": "100"})
 	testPath(t, tree, "/post/a/page/2", "/post/:post/page/:page",
-		map[string]string{"post": "a", "page": "2"})
+		Wildcard, map[string]string{"post": "a", "page": "2"})
 	testPath(t, tree, "/date/2014/5", "/date/:year/:month",
-		map[string]string{"year": "2014", "month": "5"})
+		Wildcard, map[string]string{"year": "2014", "month": "5"})
 	testPath(t, tree, "/date/2014/month", "/date/:year/month",
-		map[string]string{"year": "2014"})
+		Wildcard, map[string]string{"year": "2014"})
 	testPath(t, tree, "/date/2014/5/abc", "/date/:year/:month/abc",
-		map[string]string{"year": "2014", "month": "5"})
+		Wildcard, map[string]string{"year": "2014", "month": "5"})
 	testPath(t, tree, "/date/2014/5/def", "/date/:year/:month/:post",
-		map[string]string{"year": "2014", "month": "5", "post": "def"})
+		Wildcard, map[string]string{"year": "2014", "month": "5", "post": "def"})
 	testPath(t, tree, "/date/2014/5/def/hij", "/date/:year/:month/*post",
-		map[string]string{"year": "2014", "month": "5", "post": "def/hij"})
+		CatchAll, map[string]string{"year": "2014", "month": "5", "post": "def/hij"})
 	testPath(t, tree, "/date/2014/5/def/hij/", "/date/:year/:month/*post",
-		map[string]string{"year": "2014", "month": "5", "post": "def/hij/"})
+		CatchAll, map[string]string{"year": "2014", "month": "5", "post": "def/hij/"})
 
 	testPath(t, tree, "/date/2014/ab%2f", "/date/:year/:month",
-		map[string]string{"year": "2014", "month": "ab/"})
+		Wildcard, map[string]string{"year": "2014", "month": "ab/"})
 	testPath(t, tree, "/post/ab%2fdef/page/2%2f", "/post/:post/page/:page",
-		map[string]string{"post": "ab/def", "page": "2/"})
+		Wildcard, map[string]string{"post": "ab/def", "page": "2/"})
 
 	// Test paths with escaped wildcard characters.
-	testPath(t, tree, "/images/*path", "/images/\\*path", nil)
-	testPath(t, tree, "/images/*patch", "/images/\\*patch", nil)
-	testPath(t, tree, "/date/:year/:month", "/date/\\:year/\\:month", nil)
+	testPath(t, tree, "/images/*path", "/images/\\*path", Static, nil)
+	testPath(t, tree, "/images/*patch", "/images/\\*patch", Static, nil)
+	testPath(t, tree, "/date/:year/:month", "/date/\\:year/\\:month", Static, nil)
 	testPath(t, tree, "/apples/ab*cde/lala/baba/dada", "/apples/ab*cde/:fg/*hi",
-		map[string]string{"fg": "lala", "hi": "baba/dada"})
+		CatchAll, map[string]string{"fg": "lala", "hi": "baba/dada"})
 	testPath(t, tree, "/apples/ab\\*cde/lala/baba/dada", "/apples/ab\\*cde/:fg/*hi",
-		map[string]string{"fg": "lala", "hi": "baba/dada"})
+		CatchAll, map[string]string{"fg": "lala", "hi": "baba/dada"})
 	testPath(t, tree, "/apples/ab:cde/:fg/*hi", "/apples/ab:cde/:fg/*hi",
-		map[string]string{"fg": ":fg", "hi": "*hi"})
+		CatchAll, map[string]string{"fg": ":fg", "hi": "*hi"})
 	testPath(t, tree, "/apples/ab*cde/:fg/*hi", "/apples/ab*cde/:fg/*hi",
-		map[string]string{"fg": ":fg", "hi": "*hi"})
+		CatchAll, map[string]string{"fg": ":fg", "hi": "*hi"})
 	testPath(t, tree, "/apples/ab*cde/one/two/three", "/apples/ab*cde/:fg/*hi",
-		map[string]string{"fg": "one", "hi": "two/three"})
-	testPath(t, tree, "/apples/ab*dde", "/apples/ab*dde", nil)
+		CatchAll, map[string]string{"fg": "one", "hi": "two/three"})
+	testPath(t, tree, "/apples/ab*dde", "/apples/ab*dde", Static, nil)
 
-	testPath(t, tree, "/ima/bcd/fgh", "", nil)
-	testPath(t, tree, "/date/2014//month", "", nil)
-	testPath(t, tree, "/date/2014/05/", "", nil) // Empty catchall should not match
-	testPath(t, tree, "/post//abc/page/2", "", nil)
-	testPath(t, tree, "/post/abc//page/2", "", nil)
-	testPath(t, tree, "/post/abc/page//2", "", nil)
-	testPath(t, tree, "//post/abc/page/2", "", nil)
-	testPath(t, tree, "//post//abc//page//2", "", nil)
+	testPath(t, tree, "/ima/bcd/fgh", "", 0, nil)
+	testPath(t, tree, "/date/2014//month", "", 0, nil)
+	testPath(t, tree, "/date/2014/05/", "", 0, nil) // Empty catchall should not match
+	testPath(t, tree, "/post//abc/page/2", "", 0, nil)
+	testPath(t, tree, "/post/abc//page/2", "", 0, nil)
+	testPath(t, tree, "/post/abc/page//2", "", 0, nil)
+	testPath(t, tree, "//post/abc/page/2", "", 0, nil)
+	testPath(t, tree, "//post//abc//page//2", "", 0, nil)
 
 	t.Log("Test retrieval of duplicate paths")
 	p := "date/:year/:month/abc"

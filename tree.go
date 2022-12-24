@@ -7,8 +7,9 @@ import (
 )
 
 type node[T HandlerConstraint] struct {
-	path     string
-	fullPath string
+	path      string
+	fullPath  string
+	routeType RouteType
 
 	priority int
 
@@ -28,16 +29,20 @@ type node[T HandlerConstraint] struct {
 
 	// Data for the node is below.
 
-	addSlash   bool
-	isCatchAll bool
-	isRegex    bool
+	addSlash bool
+
 	// If true, the head handler was set implicitly, so let it also be set explicitly.
 	implicitHead bool
+
 	// If this node is the end of the URL, then call the handler, if applicable.
 	leafHandlers map[string]T
 
 	// The names of the parameters to apply.
 	leafParamNames []string
+}
+
+func (n *node[_]) isCatchAll() bool {
+	return n.routeType == CatchAll
 }
 
 func (n *node[_]) sortStaticChild(i int) {
@@ -113,7 +118,7 @@ func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) 
 		// Token starts with a *, so it's a catch-all
 		thisToken = thisToken[1:]
 		if n.catchAllChild == nil {
-			n.catchAllChild = &node[T]{path: thisToken, isCatchAll: true}
+			n.catchAllChild = &node[T]{path: thisToken, routeType: CatchAll}
 		}
 
 		if path[1:] != n.catchAllChild.path {
@@ -140,7 +145,7 @@ func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) 
 		if err != nil {
 			panic(fmt.Sprintf("treemux: regular expression %q is invalid: %v", thisToken, err))
 		}
-		child := &node[T]{path: thisToken, isRegex: true, regExpr: re}
+		child := &node[T]{path: thisToken, routeType: Regexp, regExpr: re}
 		n.regexChild = append(n.regexChild, child)
 		paramNames = append(paramNames, getRegexParamNames(re)...)
 		child.leafParamNames = paramNames
@@ -152,7 +157,7 @@ func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) 
 		paramNames = append(paramNames, thisToken)
 
 		if n.wildcardChild == nil {
-			n.wildcardChild = &node[T]{path: "wildcard"}
+			n.wildcardChild = &node[T]{path: "wildcard", routeType: Wildcard}
 		}
 		return n.wildcardChild.addPath(remainingPath, paramNames, false)
 
@@ -193,7 +198,10 @@ func (n *node[T]) addPath(path string, paramNames []string, inStaticToken bool) 
 		}
 
 		// No existing node starting with this letter, so create it.
-		child := &node[T]{path: thisToken}
+		child := &node[T]{path: thisToken, routeType: Static}
+		if n.routeType == Wildcard {
+			child.routeType = Wildcard
+		}
 
 		if n.staticIndices == nil {
 			n.staticIndices = []byte{c}
