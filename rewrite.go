@@ -10,18 +10,30 @@ import (
 // RewriteFunc is a function which rewrites an url to another one.
 type RewriteFunc func(string) string
 
+func noopRewrite(path string) string {
+	return path
+}
+
 // NewRewriteFunc creates a new RewriteFunc to rewrite path.
+// The returned function checks its input to match path, if the input
+// does not match path, the input is returned unmodified, else it
+// rewrites the input using the pattern specified by rewrite.
 func NewRewriteFunc(path, rewrite string) (RewriteFunc, error) {
+	if rewrite == "" {
+		return noopRewrite, nil
+	}
+	hasRegexVar := strings.Contains(rewrite, "$")
+	hasNamedVar := strings.Contains(rewrite, ":")
 	impl := &rewriteImpl{
-		path:    path,
-		rewrite: rewrite,
+		path:        path,
+		rewrite:     rewrite,
+		hasRegexVar: hasRegexVar,
+		hasNamedVar: hasNamedVar,
 	}
 	err := impl.parsePath()
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse path to re: %w", err)
 	}
-	impl.hasRegexVar = strings.Contains(rewrite, "$")
-	impl.hasNamedVar = strings.Contains(rewrite, ":")
 	return impl.Rewrite, nil
 }
 
@@ -29,10 +41,10 @@ type rewriteImpl struct {
 	path    string
 	rewrite string
 
-	re *regexp.Regexp
-
 	hasRegexVar bool
 	hasNamedVar bool
+
+	re *regexp.Regexp
 }
 
 func (p *rewriteImpl) parsePath() (err error) {
@@ -106,33 +118,26 @@ func (p *rewriteImpl) Rewrite(path string) string {
 	if p.re == nil {
 		return p.rewrite
 	}
-	if !p.re.MatchString(path) {
-		return path
-	}
 
 	to := p.rewrite
+	match := p.re.FindStringSubmatchIndex(path)
+	if len(match) == 0 {
+		return path
+	}
 	if p.hasRegexVar {
-		to = p.replaceREParams(path, to)
+		tmp := make([]byte, 0, len(path)+16)
+		tmp = p.re.ExpandString(tmp, to, path, match)
+		to = *(*string)(unsafe.Pointer(&tmp))
 	}
 	if p.hasNamedVar {
-		to = p.replaceNamedParams(path, to)
-	}
-	return to
-}
-
-func (p *rewriteImpl) replaceREParams(path, to string) string {
-	match := p.re.FindStringSubmatchIndex(path)
-	result := make([]byte, 0, len(path)+16)
-	result = p.re.ExpandString(result, to, path, match)
-	return *(*string)(unsafe.Pointer(&result))
-}
-
-func (p *rewriteImpl) replaceNamedParams(from, to string) string {
-	fromMatches := p.re.FindStringSubmatch(from)
-	if len(fromMatches) > 0 {
-		for i, name := range p.re.SubexpNames() {
-			if len(name) > 0 {
-				to = strings.Replace(to, ":"+name, fromMatches[i], -1)
+		for i, iname := range p.re.SubexpNames() {
+			if iname == "" {
+				continue
+			}
+			if 2*i+1 < len(match) && match[2*i] >= 0 {
+				placeholder := ":" + iname
+				value := path[match[2*i]:match[2*i+1]]
+				to = strings.Replace(to, placeholder, value, -1)
 			}
 		}
 	}
