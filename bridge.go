@@ -9,7 +9,7 @@ import (
 // `func(http.Handler) http.Handler`.
 type HTTPHandlerMiddleware = func(http.Handler) http.Handler
 
-// Bridge is a bridge which helps TreeMux with user defined handlers
+// Bridge is a bridge which helps Router with user defined handlers
 // to work together with [http.Handler] and [http.HandlerFunc] in stdlib.
 type Bridge[T HandlerConstraint] interface {
 
@@ -29,7 +29,7 @@ type Bridge[T HandlerConstraint] interface {
 }
 
 // ServeHTTP implements the interface [http.Handler].
-func (t *TreeMux[T]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (t *Router[T]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if t.PanicHandler != nil {
 		defer t.serveHTTPPanic(w, r)
 	}
@@ -39,8 +39,8 @@ func (t *TreeMux[T]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeLookupResult serves a request, given a lookup result from the Lookup function.
-// TreeMux.Bridge must be configured, else it panics.
-func (t *TreeMux[T]) ServeLookupResult(
+// Router.Bridge must be configured, else it panics.
+func (t *Router[T]) ServeLookupResult(
 	w http.ResponseWriter,
 	r *http.Request,
 	lr LookupResult[T],
@@ -136,7 +136,7 @@ func (stdlibBridge) ConvertMiddleware(middleware HTTPHandlerMiddleware) Middlewa
 	}
 }
 
-func setDefaultBridgeFunctions[T HandlerConstraint](r *TreeMux[T]) {
+func setDefaultBridgeFunctions[T HandlerConstraint](r *Router[T]) {
 	var x T
 	var typ = reflect.TypeOf(x)
 	if typ == reflect.TypeOf(HandlerFunc(nil)) {

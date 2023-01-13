@@ -65,7 +65,7 @@ const (
 type HandlerConstraint = any
 
 // LookupResult contains information about a route lookup, which is returned from Lookup and
-// can be passed to [TreeMux.ServeLookupResult] if the request should be served.
+// can be passed to [Router.ServeLookupResult] if the request should be served.
 type LookupResult[T HandlerConstraint] struct {
 	// StatusCode informs the caller about the result of the lookup.
 	// This will generally be `http.StatusNotFound` or `http.StatusMethodNotAllowed`
@@ -95,16 +95,16 @@ type LookupResult[T HandlerConstraint] struct {
 	RouteType RouteType
 }
 
-// TreeMux is a generic HTTP request router.
+// Router is a generic HTTP request router.
 // It matches the URL of each incoming request against a list of registered
 // patterns.
-type TreeMux[T HandlerConstraint] struct {
+type Router[T HandlerConstraint] struct {
 	root  *node[T]
 	mutex sync.RWMutex
 
 	Group[T]
 
-	// Bridge connects TreeMux to user defined handler type T.
+	// Bridge connects Router to user defined handler type T.
 	Bridge Bridge[T]
 
 	// The default PanicHandler just returns a 500 code.
@@ -181,24 +181,24 @@ type TreeMux[T HandlerConstraint] struct {
 }
 
 // Dump returns a text representation of the routing tree.
-func (t *TreeMux[_]) Dump() string {
+func (t *Router[_]) Dump() string {
 	return t.root.dumpTree("", "")
 }
 
-func (t *TreeMux[T]) setDefaultRequestContext(r *http.Request) *http.Request {
+func (t *Router[T]) setDefaultRequestContext(r *http.Request) *http.Request {
 	if t.DefaultContext != nil {
 		r = r.WithContext(t.DefaultContext)
 	}
 	return r
 }
 
-func (t *TreeMux[_]) serveHTTPPanic(w http.ResponseWriter, r *http.Request) {
+func (t *Router[_]) serveHTTPPanic(w http.ResponseWriter, r *http.Request) {
 	if err := recover(); err != nil {
 		t.PanicHandler(w, r, err)
 	}
 }
 
-func (t *TreeMux[_]) redirectStatusCode(method string) (int, bool) {
+func (t *Router[_]) redirectStatusCode(method string) (int, bool) {
 	var behavior RedirectBehavior
 	var ok bool
 	if behavior, ok = t.RedirectMethodBehavior[method]; !ok {
@@ -220,7 +220,7 @@ func (t *TreeMux[_]) redirectStatusCode(method string) (int, bool) {
 	}
 }
 
-func (t *TreeMux[T]) lookup(method, requestURI, urlPath string) (result LookupResult[T], found bool) {
+func (t *Router[T]) lookup(method, requestURI, urlPath string) (result LookupResult[T], found bool) {
 
 	result.StatusCode = http.StatusNotFound
 
@@ -344,7 +344,7 @@ func (t *TreeMux[T]) lookup(method, requestURI, urlPath string) (result LookupRe
 //
 // Regardless of the returned boolean's value, the LookupResult may be passed to ServeLookupResult
 // to be served appropriately.
-func (t *TreeMux[T]) Lookup(w http.ResponseWriter, r *http.Request) (LookupResult[T], bool) {
+func (t *Router[T]) Lookup(w http.ResponseWriter, r *http.Request) (LookupResult[T], bool) {
 	if t.SafeAddRoutesWhileRunning {
 		t.mutex.RLock()
 		defer t.mutex.RUnlock()
@@ -357,7 +357,7 @@ func (t *TreeMux[T]) Lookup(w http.ResponseWriter, r *http.Request) (LookupResul
 }
 
 // LookupByPath is similar to Lookup, except that it accepts the routing parameters directly.
-func (t *TreeMux[T]) LookupByPath(method, requestURI, urlPath string) (LookupResult[T], bool) {
+func (t *Router[T]) LookupByPath(method, requestURI, urlPath string) (LookupResult[T], bool) {
 	if t.SafeAddRoutesWhileRunning {
 		t.mutex.RLock()
 		defer t.mutex.RUnlock()
@@ -365,7 +365,7 @@ func (t *TreeMux[T]) LookupByPath(method, requestURI, urlPath string) (LookupRes
 	return t.lookup(method, requestURI, urlPath)
 }
 
-// defaultMethodNotAllowedHandler is the default handler for TreeMux.MethodNotAllowedHandler,
+// defaultMethodNotAllowedHandler is the default handler for Router.MethodNotAllowedHandler,
 // which is called for patterns that match, but do not have a handler installed for the
 // requested method. It simply writes the status code http.StatusMethodNotAllowed and fills
 // in the `Allow` header value appropriately.
@@ -376,9 +376,9 @@ func defaultMethodNotAllowedHandler(
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
-// New creates a new TreeMux[T].
-func New[T HandlerConstraint]() *TreeMux[T] {
-	tm := &TreeMux[T]{
+// New creates a new Router[T].
+func New[T HandlerConstraint]() *Router[T] {
+	tm := &Router[T]{
 		root:                    &node[T]{path: "/"},
 		NotFoundHandler:         http.NotFound,
 		MethodNotAllowedHandler: defaultMethodNotAllowedHandler,

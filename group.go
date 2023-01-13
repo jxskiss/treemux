@@ -17,7 +17,7 @@ func withMiddlewares[T HandlerConstraint](handler T, stack []MiddlewareFunc[T]) 
 
 type Group[T HandlerConstraint] struct {
 	path  string
-	mux   *TreeMux[T]
+	mux   *Router[T]
 	stack []MiddlewareFunc[T]
 }
 
@@ -96,13 +96,13 @@ func (g *Group[T]) Use(middlewares ...MiddlewareFunc[T]) {
 // method with a trailing slash, all other methods for that pattern will also be considered to have a
 // trailing slash, regardless of whether it is specified for those methods too.
 //
-// This behavior can be turned off by setting TreeMux.RedirectTrailingSlash to false.
+// This behavior can be turned off by setting Router.RedirectTrailingSlash to false.
 // By default it is set to true. The specifics of the redirect depend on RedirectBehavior.
 //
 // One exception to this rule is catch-all patterns. By default, trailing slash redirection is
 // disabled on catch-all patterns, since the structure of the entire URL and the desired patterns
 // can not be predicted. If trailing slash removal is desired on catch-all patterns, set
-// TreeMux.RemoveCatchAllTrailingSlash to true.
+// Router.RemoveCatchAllTrailingSlash to true.
 //
 //	router = treemux.New[MyHandler]()
 //	router.GET("/about", pageHandler)

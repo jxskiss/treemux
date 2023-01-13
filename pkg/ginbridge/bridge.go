@@ -18,7 +18,7 @@ func New() *Bridge {
 // Bridge implements treemux.Bridge[*Handler] and can be used
 // as a dynamic-configurable router.
 type Bridge struct {
-	mux unsafe.Pointer // *treemux.TreeMux[*Handler]
+	mux unsafe.Pointer // *treemux.Router[*Handler]
 
 	treemux.UnimplementedBridge[*Handler]
 }

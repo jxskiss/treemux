@@ -77,7 +77,7 @@ func benchRequest(b *testing.B, router http.Handler, r *http.Request) {
 	}
 }
 
-func serve(router *TreeMux[HandlerFunc], w http.ResponseWriter, r *http.Request, useLookup bool) bool {
+func serve(router *Router[HandlerFunc], w http.ResponseWriter, r *http.Request, useLookup bool) bool {
 	if useLookup {
 		result, found := router.Lookup(w, r)
 		router.ServeLookupResult(w, r, result)
